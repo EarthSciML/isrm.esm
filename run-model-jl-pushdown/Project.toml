@@ -1,0 +1,10 @@
+[deps]
+Blosc = "a74b3585-a348-5f62-a45c-50e91977d574"
+EarthSciAST = "c7bf5e87-b31b-4281-bdce-ffb8a46ec87c"
+EarthSciIO = "180e2c70-dda6-501b-9997-3c819c50e0c3"
+GeoInterface = "cf35fbd7-0cd7-5166-be24-54bfbe79505f"
+GeometryOps = "3251bfac-6a57-4b6d-aa61-ac1fef2975ab"
+JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+JSON3 = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
+NCDatasets = "85f8d34a-cbdd-5861-8df4-14fed0d494ab"
+ZipFile = "a5390f91-8eb1-5f08-bee0-b1d1ffed6cea"
