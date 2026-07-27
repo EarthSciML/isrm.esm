@@ -14,8 +14,6 @@ import JSON
 const EA = EarthSciAST
 include(joinpath(@__DIR__, "l3_common.jl"))
 
-const MODEL = "/Users/ctessum/code/earthsciml/isrm.esm-wt-runner/isrm_pushdown.esm"
-
 println("STRtree fast path available: ",
         hasmethod(EA.build_spatial_index, Tuple{AbstractVector}))
 

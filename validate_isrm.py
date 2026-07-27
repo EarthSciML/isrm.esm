@@ -1,20 +1,40 @@
 #!/usr/bin/env python3
-"""Validate isrm.esm against the EarthSciAST 0.8.0 reference Python binding
+"""Validate an ISRM .esm against the EarthSciAST 0.8.0 reference Python binding
 and (as a fallback / cross-check) the JSON Schema draft 2020-12.
 
-Run with the earthsci-ast-py venv, e.g.:
-  /Users/ctessum/code/earthsciml/EarthSciAST/pkg/earthsci-ast-py/.venv/bin/python3 validate_isrm.py
+Usage:
+  validate_isrm.py [model.esm ...]     # default: all of isrm*.esm in this dir
+
+The EarthSciAST checkout supplying esm-schema.json is found via $EARTHSCIAST_DIR,
+else the sibling ../EarthSciAST checkout. Run under an environment that has the
+earthsci_ast package importable (see run-model-py/ for the venv).
 """
+import glob
 import json
 import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ESM = os.path.join(HERE, "isrm.esm")
-SCHEMA = "/Users/ctessum/code/earthsciml/EarthSciAST/esm-schema.json"
 
 
-def reference_binding():
+def _earthsciast_dir():
+    """Locate the EarthSciAST checkout that ships esm-schema.json."""
+    candidates = [
+        os.environ.get("EARTHSCIAST_DIR"),
+        os.path.join(os.path.dirname(HERE), "EarthSciAST"),
+    ]
+    for cand in candidates:
+        if cand and os.path.isfile(os.path.join(cand, "esm-schema.json")):
+            return cand
+    raise FileNotFoundError(
+        "esm-schema.json not found; set EARTHSCIAST_DIR to an EarthSciAST checkout"
+    )
+
+
+SCHEMA = os.path.join(_earthsciast_dir(), "esm-schema.json")
+
+
+def reference_binding(ESM):
     import earthsci_ast
     print("== EarthSciAST reference binding ==")
     print("earthsci_ast:", earthsci_ast.__file__)
@@ -34,7 +54,7 @@ def reference_binding():
     return result.is_valid
 
 
-def jsonschema_check():
+def jsonschema_check(ESM):
     import jsonschema
     print("\n== JSON Schema (draft 2020-12) ==")
     with open(SCHEMA) as fh:
@@ -52,17 +72,32 @@ def jsonschema_check():
     return False
 
 
-if __name__ == "__main__":
+def validate_one(esm):
+    print("=" * 72)
+    print(esm)
+    print("=" * 72)
     ok = True
     try:
-        ok = reference_binding() and ok
+        ok = reference_binding(esm) and ok
     except Exception as exc:  # noqa: BLE001
         print("reference binding raised:", type(exc).__name__, exc)
         ok = False
     try:
-        ok = jsonschema_check() and ok
+        ok = jsonschema_check(esm) and ok
     except Exception as exc:  # noqa: BLE001
         print("jsonschema check raised:", type(exc).__name__, exc)
         ok = False
-    print("\nOVERALL:", "PASS" if ok else "FAIL")
-    sys.exit(0 if ok else 1)
+    print(f"\n{os.path.basename(esm)}:", "PASS" if ok else "FAIL", "\n")
+    return ok
+
+
+if __name__ == "__main__":
+    targets = sys.argv[1:] or sorted(glob.glob(os.path.join(HERE, "isrm*.esm")))
+    if not targets:
+        sys.exit("no .esm files to validate")
+    print("schema:", SCHEMA)
+    results = {esm: validate_one(esm) for esm in targets}
+    for esm, ok in results.items():
+        print(f"  {'PASS' if ok else 'FAIL'}  {os.path.basename(esm)}")
+    print("\nOVERALL:", "PASS" if all(results.values()) else "FAIL")
+    sys.exit(0 if all(results.values()) else 1)

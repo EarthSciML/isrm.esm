@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/EarthSciML/isrm.esm/contract/results_schema.json",
+  "title": "ISRM cross-language result record",
+  "description": "The single result shape every language runner (Julia, Rust, Python) emits after computing the InMAP ISRM tutorial from an isrm*.esm model. Comparing these files is what makes the three runners a cross-language agreement test rather than three independent scripts. Field-by-field tolerances live in compare_results.py, not here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["binding", "model", "mode", "grid", "ppl", "pathways", "total_pm25", "deaths"],
+  "properties": {
+    "binding": {
+      "type": "string",
+      "enum": ["julia", "python", "rust"],
+      "description": "Which language binding produced this record."
+    },
+    "binding_version": {
+      "type": "string",
+      "description": "Version/commit of the EarthSciAST binding used, for provenance."
+    },
+    "model": {
+      "type": "string",
+      "description": "Basename of the .esm driven, e.g. \"isrm.esm\". Records from different model files are comparable only if the models are numerically equivalent — isrm.esm, isrm_clean.esm and isrm_pushdown.esm all are."
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["runtime_observed_graph", "oracle_step0"],
+      "description": "How the numbers were produced. \"runtime_observed_graph\": every value came from the binding's own evaluation of the .esm observed graph — the strict bar. \"oracle_step0\": hand-written STEP-0 arithmetic over the loader outputs, i.e. a reference oracle, NOT a demonstration that the binding executes the spec."
+    },
+    "grid": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["n_src", "n_rcv", "n_rec"],
+      "description": "Problem dimensions. Records with differing dimensions are not comparable.",
+      "properties": {
+        "n_src": {"type": "integer", "description": "Source cells on the SR axis (52411 at full scale)."},
+        "n_rcv": {"type": "integer", "description": "Receptor cells (52411 at full scale)."},
+        "n_rec": {"type": "integer", "description": "Recognized-pathway EGU FF10 emission records (43650 at full scale)."}
+      }
+    },
+    "ppl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "sha256"],
+      "description": "The emission-bearing source-cell support set — the spatial join's output. This is INTEGER-valued, so it MUST be bit-identical across bindings (CONFORMANCE_SPEC §5.5: the distinct member set is byte-identical regardless of candidate-generation backend). Any difference here is a real disagreement, never float noise.",
+      "properties": {
+        "count": {"type": "integer", "description": "Number of unique emission-bearing source cells (1520 at full scale)."},
+        "ids": {
+          "type": "array",
+          "items": {"type": "integer"},
+          "description": "The full sorted 1-based source-cell id list. Optional in the file (it is `count` integers), but when present it is compared elementwise."
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "sha256 over the sorted 1-based ids serialized as decimal strings joined by \",\" (ASCII, no spaces, no trailing separator). Language-independent by construction."
+        }
+      }
+    },
+    "pathways": {
+      "type": "object",
+      "description": "Per-pathway intermediates, keyed by SR array name (SOA, pNO3, pNH4, pSO4, PrimaryPM25). Catching a disagreement here localizes it to one pathway instead of only surfacing in the death totals.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["emis_sum", "conc_sum"],
+        "properties": {
+          "emis_sum": {"type": "number", "description": "Sum of binned emissions feeding this pathway (tons/yr)."},
+          "conc_sum": {"type": "number", "description": "Sum over receptors of this pathway's concentration contribution, BEFORE the fact= 28766.639 scaling."},
+          "conc_max": {"type": "number", "description": "Max over receptors of this pathway's concentration contribution."}
+        }
+      }
+    },
+    "total_pm25": {
+      "$ref": "#/$defs/FieldSummary",
+      "description": "The fact-scaled total PM2.5 concentration field over receptors."
+    },
+    "deaths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["krewski", "lepeule"],
+      "description": "Attributable-death fields. The tutorial targets are sum(krewski)=7524.918845602511 and sum(lepeule)=16979.632171487083.",
+      "properties": {
+        "krewski": {"$ref": "#/$defs/FieldSummary", "description": "Krewski relative risk 1.06."},
+        "lepeule": {"$ref": "#/$defs/FieldSummary", "description": "Lepeule relative risk 1.14."}
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Non-comparable provenance: wall-clock, peak RSS, fetched bytes. Recorded for the writeup, never asserted on.",
+      "properties": {
+        "wall_seconds": {"type": "number"},
+        "peak_rss_bytes": {"type": "integer"}
+      }
+    }
+  },
+  "$defs": {
+    "FieldSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sum", "sample"],
+      "description": "Summary of one length-n_rcv float field. `sum` alone is a weak check (cancellation hides per-cell disagreement), so a fixed-index `sample` is required alongside it. `sha256` additionally pins bit-identity where that is expected — across bindings it is NOT expected, since float reduction order differs.",
+      "properties": {
+        "sum": {"type": "number"},
+        "min": {"type": "number"},
+        "max": {"type": "number"},
+        "sample": {
+          "type": "array",
+          "items": {"type": "number"},
+          "description": "Values at the 25 fixed 1-based indices defined by sample_indices() in compare_results.py: for k=0..24, idx_k = 1 + (k*(n_rcv-1) + 12) div 24, using INTEGER division throughout so the index set cannot drift between languages' float rounding modes. Evenly spans the grid."
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "sha256 over the full field as little-endian IEEE-754 float64 bytes. Equal ⇒ bit-identical fields. Unequal ⇒ INCONCLUSIVE, not a failure — compare `sum`/`sample` within tolerance instead. Note -0.0 and +0.0 compare equal as numbers but hash differently, so a field containing zeros can hash differently while being numerically identical."
+        }
+      }
+    }
+  }
+}

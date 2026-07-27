@@ -39,16 +39,44 @@ choropleth in-format, so scatter is the authored alternative → `isrm_totalpm25
 ## Running
 
 ```bash
-julia --project=. -e 'import Pkg; Pkg.instantiate()'
+# One-time: dev-track the sibling EarthSciAST + EarthSciIO checkouts, then
+# instantiate + precompile. (`Pkg.instantiate()` alone is NOT enough — the
+# registered releases lack the zarr + ff10 readers this runner is built on.)
+julia --project=. setup.jl
 
-# Part A (fetches ~14 GB of SR chunks over the run; ~1 h; resumable)
-#   the 72 MB EGU zip is expected at data/2016fd_inputs_point.zip
-julia --project=. run-model.jl
+# the 72 MB EGU FF10 zip, expected at data/2016fd_inputs_point.zip:
+mkdir -p data && curl -L -o data/2016fd_inputs_point.zip \
+  https://gaftp.epa.gov/air/emismod/2016/alpha/2016fd/emissions/2016fd_inputs_point.zip
+
+# Part A (fetches ~14 GB of SR chunks over the run; ~25 min; resumable)
+ISRM_SR_ROOT=/scratch/$USER/isrm_sr julia --project=. run-model.jl
 
 julia --project=. part_b.jl     # Part B (seconds; no network)
 julia --project=. plot.jl       # example plot (needs Part A's result)
 ```
 
-The `Manifest.toml` dev-tracks the sibling `EarthSciIO` (with the `zarr`+`ff10`
-readers) and `EarthSciAST` checkouts. Network-robustness knobs (all optional):
-`EARTHSCIIO_HTTP_TIMEOUT`, `EARTHSCIIO_HTTP_RETRIES`, `EARTHSCIIO_LOCK_STALE_AGE`.
+`setup.jl` finds the checkouts at `../../EarthSciAST/pkg/EarthSciAST.jl` and
+`../../EarthSciIO/julia` by default; override with `EA_PATH` / `IO_PATH`. The
+resulting `Manifest.toml` is gitignored because it pins machine-specific dev
+paths — `setup.jl` is how a fresh checkout becomes runnable.
+
+`ISRM_SR_ROOT` redirects the bulky, pathway-by-pathway-evicted SR chunk cache;
+point it at fast **local** disk when the checkout lives on a network filesystem.
+Network-robustness knobs (all optional): `EARTHSCIIO_HTTP_TIMEOUT`,
+`EARTHSCIIO_HTTP_RETRIES`, `EARTHSCIIO_LOCK_STALE_AGE`.
+
+## Output: the cross-language contract record
+
+Part A also writes `results.json` in the shared shape defined by
+[`../contract/results_schema.json`](../contract/results_schema.json), so this
+runner's numbers can be diffed against the Python and Rust runners':
+
+```bash
+python3 ../contract/compare_results.py run-model-jl/results.json [...]
+```
+
+It is tagged `"mode": "oracle_step0"` — these numbers come from `run-model.jl`'s
+own hand-written STEP-0 arithmetic over the loader outputs, **not** from
+evaluating the `.esm` observed graph. It is the reference oracle the
+runtime-driven runners are checked against, not itself evidence that a binding
+executes the specification.

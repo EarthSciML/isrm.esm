@@ -26,8 +26,6 @@ import JSON
 const EA = EarthSciAST
 include(joinpath(@__DIR__, "l3_common.jl"))
 
-const MODEL = "/Users/ctessum/code/earthsciml/isrm.esm-wt-runner/isrm_pushdown.esm"
-const ISRM_DIR = dirname(MODEL)
 const SR_ROOT = joinpath(SCRATCH, get(ENV, "L3_SR_DIR", "l3_cache_sr"))
 
 # zarr array name → model SR variable name (applies_to / const-factor key)

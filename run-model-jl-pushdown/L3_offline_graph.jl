@@ -13,9 +13,6 @@ import JSON
 const EA = EarthSciAST
 include(joinpath(@__DIR__, "l3_common.jl"))
 
-const MODEL = "/Users/ctessum/code/earthsciml/isrm.esm-wt-runner/isrm_pushdown.esm"
-const ISRM_DIR = dirname(MODEL)
-
 # ---- MOCK gated SR provider: records calls, slices synthetic SR per selection.
 # Keyed by MODEL variable names (SR_SOA…) so applies_to resolves via
 # _const_factor_aliases to the SR_* parameters.

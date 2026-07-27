@@ -13,9 +13,6 @@ import JSON
 const EA = EarthSciAST
 include(joinpath(@__DIR__, "l3_common.jl"))
 
-const MODEL = "/Users/ctessum/code/earthsciml/isrm.esm-wt-runner/isrm_pushdown.esm"
-const ISRM_DIR = dirname(MODEL)
-
 println("building full-scale inputs (43650 emissions, LCC-projected) ...")
 inp = build_inputs()
 println("  N_REC=", inp.N_REC, "  N_SRC=", inp.N_SRC,

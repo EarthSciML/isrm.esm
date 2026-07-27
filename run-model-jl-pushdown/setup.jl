@@ -7,8 +7,13 @@
 import Pkg
 Pkg.activate(@__DIR__)
 
-const EA_PATH = "/Users/ctessum/code/earthsciml/EarthSciAST-wt-pushdown/pkg/EarthSciAST.jl"
-const IO_PATH = "/Users/ctessum/code/earthsciml/EarthSciIO-wt-pushdown/julia"
+# EA_PATH / IO_PATH default to the sibling checkouts; override via the env.
+include(joinpath(@__DIR__, "paths.jl"))
+
+for (label, var, path) in (("EarthSciAST", "EA_PATH", EA_PATH), ("EarthSciIO", "IO_PATH", IO_PATH))
+    isdir(path) || error("$label checkout not found at $path — set the $var environment variable")
+end
+println("dev-tracking:\n  EarthSciAST: $EA_PATH\n  EarthSciIO:  $IO_PATH")
 
 Pkg.develop([Pkg.PackageSpec(path=EA_PATH), Pkg.PackageSpec(path=IO_PATH)])
 Pkg.add([

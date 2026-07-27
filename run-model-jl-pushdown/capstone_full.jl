@@ -29,8 +29,6 @@ import Serialization
 const EA = EarthSciAST
 include(joinpath(@__DIR__, "l3_common.jl"))
 
-const MODEL    = "/Users/ctessum/code/earthsciml/isrm.esm-wt-runner/isrm_pushdown.esm"
-const ISRM_DIR = dirname(MODEL)
 const MODE     = get(ENV, "CAP_MODE", "ab")
 const CK_DIR   = joinpath(SCRATCH, "capstone_ck"); mkpath(CK_DIR)
 const SR_ROOT  = joinpath(SCRATCH, "capstone_sr")   # evicted between pathways

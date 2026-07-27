@@ -5,10 +5,8 @@
 # deferred fetch).
 import Serialization
 
-const RUNMODEL = "/Users/ctessum/code/earthsciml/isrm.esm-wt-runner/run-model-jl"
-const ZARR_URL = "s3://inmap-model/isrm_v1.2.1.zarr/"
-const N_SRC = 52411
-const SCRATCH = "/private/tmp/claude-501/-Users-ctessum-code-earthsciml-isrm-esm/dc49fdd1-a55e-425c-a6d0-6e168223d411/scratchpad"
+# RUNMODEL / ZARR_URL / N_SRC / SCRATCH / MODEL / ISRM_DIR all resolve here.
+include(joinpath(@__DIR__, "paths.jl"))
 
 # ---- LCC constants + forward (verbatim from run-model.jl) -------------------
 const LAT_1=33.0; const LAT_2=45.0; const LAT_0=40.0; const LON_0=-97.0; const LCC_R=6370997.0

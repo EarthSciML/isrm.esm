@@ -24,12 +24,17 @@ using EarthSciIO, Blosc, ZipFile
 import Serialization
 
 const HERE     = @__DIR__
+# The cross-language result contract emitter (must be included at TOP level —
+# methods defined by an `include` inside a function are not callable from it).
+include(joinpath(dirname(@__DIR__), "contract", "results.jl"))
 const ZARR_URL = "s3://inmap-model/isrm_v1.2.1.zarr/"
 const ZIP_LOCAL = get(ENV, "EGU_ZIP", joinpath(HERE, "data", "2016fd_inputs_point.zip"))
 const N_SRC    = 52411
 const CK_DIR   = joinpath(HERE, "checkpoints"); mkpath(CK_DIR)
 const META_ROOT = joinpath(HERE, "cache_meta")   # persistent (geo/pop, tiny)
-const SR_ROOT   = joinpath(HERE, "cache_sr")     # evicted between pathways
+# SR chunk blobs: bulky (~3 GB per pathway) and evicted between pathways, so point
+# ISRM_SR_ROOT at fast LOCAL disk when HERE is on a network filesystem.
+const SR_ROOT   = get(ENV, "ISRM_SR_ROOT", joinpath(HERE, "cache_sr"))
 const OUT       = joinpath(HERE, "run-model_result.jls")
 
 # ---- STEP-0 constants (from isrm.esm / tutorial notebook) ----
@@ -280,6 +285,25 @@ function main()
         "sum_deathsK"=>res.sum_deathsK, "sum_deathsL"=>res.sum_deathsL,
     ))
     println("wrote ", OUT)
+
+    # ---- the cross-language contract record (contract/results_schema.json) ----
+    # mode="oracle_step0": these numbers come from THIS file's hand-written STEP-0
+    # arithmetic over the loader outputs, not from evaluating the .esm observed
+    # graph. It is the reference oracle the runtime-driven runners are checked
+    # against, not itself a demonstration that a binding executes the spec.
+    pathways = Dict(arr => (emis_sum = sum(Ep), conc_sum = sum(concs[arr]),
+                            conc_max = maximum(concs[arr]))
+                    for (arr, Ep) in (("SOA", st1["E_VOC"]), ("pNO3", st1["E_NOx"]),
+                                      ("pNH4", st1["E_NH3"]), ("pSO4", st1["E_SOx"]),
+                                      ("PrimaryPM25", st1["E_PM25"])))
+    write_results(joinpath(HERE, "results.json");
+        model = "isrm.esm", mode = "oracle_step0",
+        n_src = N_SRC, n_rcv = N_SRC, n_rec = st1["N_REC"],
+        ppl = Int.(st1["ppl"]) .+ 1,               # checkpoint is 0-based
+        pathways = pathways,
+        total_pm25 = res.TotalPM25, deathsK = res.deathsK, deathsL = res.deathsL,
+        timing = Dict("wall_seconds" => time() - t0))
+
     println(repeat("=", 70))
     println("PART (A) COMPLETE in $(round((time()-t0)/60, digits=1)) min")
     println("  sum(deathsK) = ", round(res.sum_deathsK, digits=2), "   target 7524.84   ",

@@ -25,10 +25,10 @@ using EarthSciIO
 using Blosc   # activates the EarthSciIOBloscExt decode path for blosc chunks
 import JSON
 
-const ZARR_URL = "s3://inmap-model/isrm_v1.2.1.zarr/"
-const ARR      = "SOA"
-const HERE     = @__DIR__
-const SCRATCH  = "/private/tmp/claude-501/-Users-ctessum-code-earthsciml-isrm-esm/dc49fdd1-a55e-425c-a6d0-6e168223d411/scratchpad"
+include(joinpath(@__DIR__, "paths.jl"))   # ZARR_URL / SCRATCH
+
+const ARR  = "SOA"
+const HERE = @__DIR__
 
 # 8 arbitrary 1-based source ids (2 share a chunk → 7 distinct chunk-rows)
 const IDS = [1, 100, 5000, 20000, 30000, 40000, 50000, 52411]
