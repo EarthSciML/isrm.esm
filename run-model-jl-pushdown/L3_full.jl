@@ -101,9 +101,9 @@ else
 end
 const REDUCED = region !== nothing || firstn !== nothing
 
-println("building inputs ...")
+println("building inputs ..."); flush(stdout)
 inp = build_inputs(; region=region, firstn=firstn)
-println("  N_REC=", inp.N_REC)
+println("  N_REC=", inp.N_REC); flush(stdout)
 
 # ---- construct the gated provider ------------------------------------------
 evict_blobs!(SR_ROOT)
@@ -130,10 +130,10 @@ ca = Dict{String,Any}(
     "TotalPop"=>inp.TotalPop, "MortalityRate"=>inp.MortalityRate)
 
 insp = EA.BuildInspection()
-println("build_evaluator (value-invention → gated fetch → build) ...")
+println("build_evaluator (value-invention → gated fetch → build) ..."); flush(stdout)
 t_prep = @elapsed EA.build_evaluator(doc; model_name="ISRM", const_arrays=ca, inspect=insp,
     _gated_providers=Dict{String,Any}("ISRM_SR"=>gated), _sample_time=0.0)
-println("BUILD done in ", round(t_prep, digits=1), " s")
+println("BUILD done in ", round(t_prep, digits=1), " s"); flush(stdout)
 
 # ---- selection assertions ---------------------------------------------------
 @assert length(gated.calls) >= 1 "gated provider was never sampled"
@@ -148,7 +148,19 @@ if !REDUCED
 end
 
 # ---- evaluate deaths --------------------------------------------------------
-rt(v)=(fld=EA._observed_field(insp, f, "ISRM", v); fld===nothing ? error("no $v") : fld[1])
+function rt(v)
+    print("  evaluating observed $v ... "); flush(stdout)
+    # wall2 engagement counters: did the compile-once fast path ENGAGE, or did it
+    # fall back to the O(N_cells*N_src) per-cell loop? A MISS here is the whole
+    # difference between ~12 s and "never finishes" at 52,411 cells.
+    EA._CELLWISE_FASTPATH_HITS[] = 0
+    EA._CELLWISE_FASTPATH_MISS[] = 0
+    t = @elapsed (fld = EA._observed_field(insp, f, "ISRM", v))
+    fld === nothing && error("no $v")
+    println(round(t, digits=1), " s   [fastpath hits=", EA._CELLWISE_FASTPATH_HITS[],
+            " miss=", EA._CELLWISE_FASTPATH_MISS[], "]"); flush(stdout)
+    return fld[1]
+end
 dK = rt("deathsK"); dL = rt("deathsL"); tp = rt("TotalPM25")
 sK = sum(dK); sL = sum(dL)
 println("\n", "="^70)
