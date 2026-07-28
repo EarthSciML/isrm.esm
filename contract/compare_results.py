@@ -36,9 +36,12 @@ import sys
 RTOL_FIELD = 1e-12       # cross-binding, per-field scalars (sum/min/max/sample)
 RTOL_ORACLE = 1e-3       # vs the published tutorial totals (they are rounded)
 
-# The tutorial / run-model.jl oracle.
+# The tutorial / run-model.jl oracle. It is a FULL-SCALE number: it is only
+# asserted on records whose grid matches the full problem (see check_oracle).
 ORACLE_DEATHS_K = 7524.918845602511
 ORACLE_DEATHS_L = 16979.632171487083
+FULL_N_SRC = 52411
+FULL_N_REC = 43650
 
 SAMPLE_N = 25
 
@@ -159,6 +162,17 @@ def compare_pair(name_a: str, a: dict, name_b: str, b: dict, rep: Report) -> Non
 
 
 def check_oracle(name: str, doc: dict, rep: Report) -> None:
+    # The tutorial totals are a FULL-SCALE result. A reduced record (a runner
+    # driven with a truncated emission-record list, to exercise the pipeline
+    # cheaply) is a different problem, not a failing one — asserting the oracle
+    # against it reports a bogus ~99% error and buries the cross-binding
+    # comparison that IS meaningful. Cross-binding checks still run on it.
+    grid = doc.get("grid") or {}
+    if (grid.get("n_src"), grid.get("n_rec")) != (FULL_N_SRC, FULL_N_REC):
+        print(f"\n--- {name} vs tutorial oracle: SKIPPED ---")
+        print(f"  reduced record (n_src={grid.get('n_src')}, n_rec={grid.get('n_rec')}); "
+              f"the tutorial totals only apply at n_src={FULL_N_SRC}, n_rec={FULL_N_REC}")
+        return
     print(f"\n--- {name} vs tutorial oracle ---")
     for label, key, target in (("krewski", "krewski", ORACLE_DEATHS_K),
                                ("lepeule", "lepeule", ORACLE_DEATHS_L)):
@@ -175,13 +189,25 @@ def main(argv: list[str]) -> int:
         return 2
     docs = {}
     rep = Report()
+    loaded = []
     for path in argv[1:]:
         with open(path) as fh:
             doc = json.load(fh)
         validate_schema(path, doc, rep)
-        name = doc.get("binding", os.path.basename(path))
+        loaded.append((path, doc))
+
+    # Label by binding, but DISAMBIGUATE when a binding appears more than once.
+    # Two records can share a binding and still be the most interesting pair in
+    # the set: the Julia oracle_step0 reference vs the Julia runtime_observed_graph
+    # run is exactly what shows the runtime reproduces the hand-written oracle.
+    # Keying on `binding` alone would silently drop one of them and compare nothing.
+    bindings = [d.get("binding", os.path.basename(p)) for p, d in loaded]
+    for (path, doc), b in zip(loaded, bindings):
+        name = b if bindings.count(b) == 1 else f"{b}[{doc.get('mode', '?')}]"
+        while name in docs:                       # same binding AND same mode
+            name += "'"
         docs[name] = doc
-        print(f"loaded {path}  binding={doc.get('binding')} model={doc.get('model')} "
+        print(f"loaded {path}  as {name}  model={doc.get('model')} "
               f"mode={doc.get('mode')}")
         if doc.get("mode") != "runtime_observed_graph":
             print(f"  NOTE: mode={doc.get('mode')!r} — this record is a reference oracle, "

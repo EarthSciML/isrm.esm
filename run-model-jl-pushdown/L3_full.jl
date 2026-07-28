@@ -25,6 +25,11 @@ import GeometryOps, GeoInterface
 import JSON
 const EA = EarthSciAST
 include(joinpath(@__DIR__, "l3_common.jl"))
+# contract/results.jl must be included at TOP LEVEL: methods defined by an
+# include() inside a function are not callable from that same function (world age).
+include(joinpath(@__DIR__, "..", "contract", "results.jl"))
+
+const T0 = time()
 
 const SR_ROOT = joinpath(SCRATCH, get(ENV, "L3_SR_DIR", "l3_cache_sr"))
 
@@ -168,13 +173,51 @@ println("  sum(deathsK) = ", sK)
 println("  sum(deathsL) = ", sL)
 println("  Σ TotalPM25  = ", sum(tp))
 
+okK = isapprox(sK, 7524.918845602511; rtol=1e-4)
+okL = isapprox(sL, 16979.632171487083; rtol=1e-4)
 if !REDUCED
-    okK = isapprox(sK, 7524.918845602511; rtol=1e-4)
-    okL = isapprox(sL, 16979.632171487083; rtol=1e-4)
     println("  target deathsK=7524.918845602511  rel.err ", round(100*(sK-7524.918845602511)/7524.918845602511, digits=4), "%")
     println("  target deathsL=16979.632171487083 rel.err ", round(100*(sL-16979.632171487083)/16979.632171487083, digits=4), "%")
     println("L3 FULL: ", (okK && okL) ? "PASS" : "FAIL")
     println("="^70)
+end
+
+# ---- the cross-language contract record (contract/results_schema.json) -------
+# mode="runtime_observed_graph": EVERY number below comes from EA's own evaluation
+# of the .esm observed graph — no STEP-0 arithmetic in this file. That is what
+# makes this record comparable with run-model-jl/results.json (mode="oracle_step0",
+# hand-written arithmetic) as a check that the runtime executes the spec.
+#
+# The per-pathway intermediates are evaluated through the SAME runtime path, so
+# a disagreement localizes to one pathway instead of only surfacing in the totals.
+if !REDUCED || get(ENV, "L3_CONTRACT", "0") == "1"
+    println("\nevaluating per-pathway contract intermediates through the observed graph ...")
+    flush(stdout)
+    # zarr array name → (emissions observed, concentration observed)
+    PW_OBS = ["SOA"        => ("E_VOC",  "conc_SOA"),
+              "pNO3"       => ("E_NOx",  "conc_pNO3"),
+              "pNH4"       => ("E_NH3",  "conc_pNH4"),
+              "pSO4"       => ("E_SOx",  "conc_pSO4"),
+              "PrimaryPM25"=> ("E_PM25", "conc_PrimaryPM25")]
+    pathways = Dict{String,Any}()
+    for (arr, (evar, cvar)) in PW_OBS
+        Ep = rt(evar); cp = rt(cvar)
+        pathways[arr] = (emis_sum = sum(Ep), conc_sum = sum(cp), conc_max = maximum(cp))
+    end
+
+    out = joinpath(@__DIR__, REDUCED ? "results_reduced.json" : "results.json")
+    write_results(out;
+        binding_version = "julia $(VERSION) / EarthSciAST $(pkgversion(EarthSciAST))",
+        model = MODEL, mode = "runtime_observed_graph",
+        n_src = inp.N_SRC, n_rcv = inp.N_SRC, n_rec = inp.N_REC,
+        ppl = Int.(members),                       # the gate's own selection, 1-based
+        pathways = pathways,
+        total_pm25 = tp, deathsK = dK, deathsL = dL,
+        timing = Dict("wall_seconds" => time() - T0, "build_seconds" => t_prep,
+                      "peak_rss_bytes" => parse(Int, split(read("/proc/self/statm", String))[2]) * 4096))
+end
+
+if !REDUCED
     (okK && okL) || error("L3 full oracle MISMATCH")
 else
     # cross-check reduced deaths against a direct STEP-0 oracle on the same ppl rows
