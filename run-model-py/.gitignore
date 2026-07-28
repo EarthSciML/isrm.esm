@@ -1,3 +1,5 @@
 __pycache__/
 *.pyc
 results_reduced.json
+ppl_members.npy
+probe.log
