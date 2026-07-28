@@ -1,0 +1,26 @@
+[package]
+name = "run-model-rs"
+version = "0.1.0"
+edition = "2021"
+description = "ISRM through the Rust binding's own evaluation of isrm_pushdown.esm"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "run-model-rs"
+path = "src/main.rs"
+
+[dependencies]
+# The `esio` feature pulls in the EarthSciIO bridge (EsioProvider), which is how
+# the gated SR fetch reaches the live zarr store.
+earthsci-ast = { path = "../../EarthSciAST/pkg/earthsci-ast-rs", default-features = false, features = [
+    "esio",
+] }
+earthsciio = { path = "../../EarthSciIO/rust" }
+ndarray = "0.16"
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+sha2 = "0.10"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[profile.release]
+debug = false
