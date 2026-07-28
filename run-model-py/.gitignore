@@ -3,3 +3,4 @@ __pycache__/
 results_reduced.json
 ppl_members.npy
 probe.log
+full.log

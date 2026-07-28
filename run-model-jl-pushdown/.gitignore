@@ -7,3 +7,7 @@ data/
 *.log
 # machine-specific dev-path manifest (see README: dev-tracks sibling checkouts)
 Manifest.toml
+# transient run artifacts (regenerable)
+results_reduced.json
+*.pb.gz
+.Manifest.baseline.toml

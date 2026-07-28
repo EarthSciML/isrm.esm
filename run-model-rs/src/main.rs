@@ -107,21 +107,6 @@ fn declared_args(expr: &Expr, out: &mut HashSet<String>) {
     }
 }
 
-/// A derived index set's `member_factor`, read from the RAW document.
-///
-/// The Rust `IndexSet` type does not model this field, so the typed view cannot
-/// answer the question. See the call site.
-fn raw_member_factor(json_text: &str, set_name: &str) -> Result<Option<String>, String> {
-    let doc: serde_json::Value =
-        serde_json::from_str(json_text).map_err(|e| format!("reparse document: {e}"))?;
-    Ok(doc
-        .get("index_sets")
-        .and_then(|m| m.get(set_name))
-        .and_then(|s| s.get("member_factor"))
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string()))
-}
-
 /// Dependency order over the observeds: an observed follows every observed it
 /// names. A cycle is a malformed model and is a hard error.
 fn observed_order(defs: &HashMap<String, Expr>) -> Result<Vec<String>, String> {
@@ -303,17 +288,13 @@ fn run() -> Result<(), String> {
 
     // Hook 1: the derived set's `member_factor` is fed back as a const factor so
     // the downstream cell_W/cell_S/… gathers read the compact derived axis.
-    //
-    // Read from the RAW document rather than the typed `IndexSet`, because the
-    // Rust `IndexSet` struct does not carry `member_factor` — the field is
-    // normative (CONFORMANCE_SPEC §5.5.6, and it is in esm-schema.json and the
-    // shared overlap fixture) but the Rust type drops it on parse. Recorded as a
-    // binding gap; reading the JSON keeps this runner honest in the meantime
-    // rather than hardcoding the factor's name.
-    if let Some(mf) = raw_member_factor(&json_text, "emis_src_cells")? {
+    if let Some(mf) = index_sets
+        .get("emis_src_cells")
+        .and_then(|is| is.member_factor.clone())
+    {
         let v: Vec<f64> = members.iter().map(|&m| m as f64).collect();
         arrays.insert(
-            mf,
+            mf.clone(),
             ArrayD::from_shape_vec(IxDyn(&[v.len()]), v).map_err(|e| e.to_string())?,
         );
     }
