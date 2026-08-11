@@ -1,0 +1,6 @@
+Manifest.toml
+results.json
+results_reduced.json
+*.log
+cache_*/
+checkpoints/
