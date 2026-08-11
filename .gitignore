@@ -1,3 +1,5 @@
+# Bulk input data stays untracked — the EGU FF10 zip lives at
+# data/2016fd_inputs_point.zip (see README "Prerequisites" for the download).
+data/
 __pycache__/
 *.pyc
-.venv/

@@ -88,13 +88,18 @@ def peak_rss_bytes() -> int:
 # --------------------------------------------------------------------------- #
 def read_egu(egu_meta: dict, firstn: int | None):
     xe = egu_meta["metadata"]["x_esd"]
-    if not os.path.isfile(paths.EGU_ZIP):
-        raise FileNotFoundError(f"EGU zip not found at {paths.EGU_ZIP} — set EGU_ZIP")
     eio.register_format_readers()
+    if os.path.isfile(paths.EGU_ZIP):
+        url = "file://" + os.path.abspath(paths.EGU_ZIP)
+    else:
+        # Fall back to the document's declared source, fetched once through the
+        # EarthSciIO cache (content-addressed under the cache root).
+        url = str(egu_meta["source"]["url_template"])
+        log(f"  EGU zip not found at {paths.EGU_ZIP} — fetching {url} via the cache ...")
     loader = eio.DataLoader(
         name="EGU_Emis",
         format=str(egu_meta["metadata"]["esio_format"]),
-        url="file://" + os.path.abspath(paths.EGU_ZIP),
+        url=url,
         variables=["POLID", "ANN_VALUE", "LONGITUDE", "LATITUDE"],
         reader_kwargs={
             "member_glob": str(xe["member_filter"]),

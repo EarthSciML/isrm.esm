@@ -1,10 +1,10 @@
 #!/usr/bin/env julia
-# Set up the Phase-1 shim project: dev-track the EarthSciAST + EarthSciIO
+# Set up the Julia shim project: dev-track the EarthSciAST + EarthSciIO
 # checkouts (env-overridable via EA_PATH / IO_PATH), add the runtime deps the
 # prepare/observed-graph path touches (Blosc activates EarthSciIO's zarr codec
-# ext; ZipFile for the TEMPORARY EGU ingest; GeometryOps + GeoInterface activate
-# the STRtree broad-phase fast path for the overlap join-gate), then
-# instantiate + precompile.
+# ext; ZipFile is a dep of EarthSciIO's FF10 zip-member reader; GeometryOps +
+# GeoInterface activate the STRtree broad-phase fast path for the overlap
+# join-gate), then instantiate + precompile.
 import Pkg
 Pkg.activate(@__DIR__)
 

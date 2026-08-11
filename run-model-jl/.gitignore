@@ -1,9 +1,0 @@
-# generated caches, checkpoints, inputs, and outputs (all regenerable)
-cache_meta/
-cache_sr/
-checkpoints/
-data/
-*.jls
-*.log
-# machine-specific dev-path manifest (see README: dev-tracks sibling checkouts)
-Manifest.toml

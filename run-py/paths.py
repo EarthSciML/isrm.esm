@@ -9,7 +9,9 @@ the Python mirror of run-jl/paths.jl.
                    /scratch.local/$USER, $SCRATCH, tempdir)
   EA_PATH          earthsci-ast-py checkout  (default: <sibling>/EarthSciAST/pkg/earthsci-ast-py)
   IO_PATH          EarthSciIO checkout       (default: <sibling>/EarthSciIO)
-  EGU_ZIP          FF10 point-source zip     (default: <repo>/run-model-jl/data/2016fd_inputs_point.zip)
+  EGU_ZIP          FF10 point-source zip     (default: <repo>/data/2016fd_inputs_point.zip;
+                   when absent, run.py falls back to fetching the document's
+                   source.url_template through the EarthSciIO cache)
   ISRM_ESIO_CACHE  EarthSciIO cache root     (default: $ISRM_SCRATCH/run-py-esio-cache;
                    point it at an existing cache — e.g. run-jl's — to reuse
                    already-fetched SR chunk blobs, the cache format is
@@ -43,7 +45,7 @@ EA_PATH = os.environ.get(
 IO_PATH = os.environ.get("IO_PATH", os.path.join(CODE_ROOT, "EarthSciIO"))
 
 EGU_ZIP = os.environ.get(
-    "EGU_ZIP", os.path.join(REPO, "run-model-jl", "data", "2016fd_inputs_point.zip")
+    "EGU_ZIP", os.path.join(REPO, "data", "2016fd_inputs_point.zip")
 )
 
 
