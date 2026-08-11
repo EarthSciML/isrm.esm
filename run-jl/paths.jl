@@ -9,7 +9,9 @@
 #                 /scratch.local/$USER, $SCRATCH, tempdir())
 #   EA_PATH       EarthSciAST.jl checkout    (default: <sibling>/EarthSciAST/pkg/EarthSciAST.jl)
 #   IO_PATH       EarthSciIO julia checkout  (default: <sibling>/EarthSciIO/julia)
-#   EGU_ZIP       FF10 point-source zip      (default: <repo>/run-model-jl/data/2016fd_inputs_point.zip)
+#   EGU_ZIP       FF10 point-source zip      (default: <repo>/data/2016fd_inputs_point.zip;
+#                 when absent, run.jl falls back to fetching the document's
+#                 source.url_template through the EarthSciIO cache)
 #
 # SR chunk blobs land under ISRM_SCRATCH, so it wants GBs of fast local disk —
 # NOT a network filesystem and NEVER a tmpfs /tmp (it eats the memory cgroup).
@@ -29,7 +31,7 @@ const EA_PATH = get(ENV, "EA_PATH", joinpath(CODE_ROOT, "EarthSciAST", "pkg", "E
 const IO_PATH = get(ENV, "IO_PATH", joinpath(CODE_ROOT, "EarthSciIO", "julia"))
 
 const EGU_ZIP = get(ENV, "EGU_ZIP",
-                    joinpath(REPO, "run-model-jl", "data", "2016fd_inputs_point.zip"))
+                    joinpath(REPO, "data", "2016fd_inputs_point.zip"))
 
 """First writable scratch root among the candidates, as `<root>/isrm-esm`."""
 function _resolve_scratch()

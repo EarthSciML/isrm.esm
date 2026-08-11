@@ -1,15 +1,6 @@
 # isrm.esm — the InMAP ISRM as a language-agnostic model
 
-> **TRANSITION (2026-08-10).** `isrm.esm` is now the former `isrm_clean.esm` — the
-> fully-automatic variant (in-model Lambert projection, engine-derived pushdown,
-> no runner pre-pass). The runners below still target the retired
-> `isrm_pushdown.esm` and are being replaced by thin shims phase by phase; until
-> that lands they do not run from this tree. The last fully-working pushdown
-> state is tagged **`pushdown-era`**, and its four full-scale result records are
-> frozen in `contract/records/` as the comparison baseline. The numbers quoted in
-> this README are from that baseline.
-
-`isrm.esm` states the InMAP source–receptor tutorial as an
+`isrm.esm` states the InMAP source–receptor tutorial as **one**
 [EarthSciAST](https://github.com/EarthSciML/EarthSciAST) `.esm` document, and
 computes it three times — once through each of EarthSciAST's Julia, Python, and
 Rust bindings — from that one document.
@@ -17,145 +8,189 @@ Rust bindings — from that one document.
 The point is not that three programs produce the same number. It is that **one
 spec drives three independent engines**, and the engines agree.
 
+The document is fully automatic — nothing model-shaped lives in the runners:
+
+* **In-model projection.** The raw EGU `lon`/`lat` are the parameters; the
+  Lambert conformal conic `X`/`Y` are observeds the engine evaluates at build
+  time. No runner projects a coordinate.
+* **Engine-derived pushdown.** `prepare(…, pushdown_rewrite=true)` runs the
+  projection-pushdown rewrite inside the engine: it derives the
+  emission-bearing support set (`pd_support__src_cells`) from the model's own
+  spatial `join.overlap`, and records the SR gate in its own rewrite record
+  (`metadata.x_esd.pushdown.gated_select`). No runner hand-authors a gate.
+* **Engine-side gated SR fetch.** The zarr reads are built from the rewrite's
+  gate and pushed down to the store, so only the intersecting chunks of the
+  ~330 GB SR matrix are fetched.
+* **Document-declared data sources.** Every provider — the SR zarr, grid,
+  population, mortality, and the EGU FF10 inventory — comes from the
+  document's `data_loaders` via `providers_from_document` (format =
+  `metadata.esio_format`, URL = `source.url_template`). The FF10-in-zip
+  quirks are declared too: the `*egu*` member glob (`x_esd.member_filter`)
+  and the EPA column-header row (`x_esd.skip_header_row`) are reader options
+  EarthSciIO implements in all three languages, and the POLID→pathway map is
+  the document's `x_esd.pollutant_codes`.
+
+Each shim contributes input plumbing and orchestration only; every reported
+number is the binding's evaluation of the document's observed graph.
+
 ## The result
 
-Full scale: 52,411 receptor cells × 1,520 emission-bearing source cells × 43,650
-EGU FF10 emission records, against the live `s3://inmap-model/isrm_v1.2.1.zarr`.
+Full scale: 52,411 receptor cells × 1,520 emission-bearing source cells ×
+43,650 EGU FF10 emission records, against the live
+`s3://inmap-model/isrm_v1.2.1.zarr`. Same machine, same cache discipline:
 
-| binding | `sum(deathsK)` | vs tutorial |
-|---|---|---|
-| tutorial oracle | 7524.918845602511 | — |
-| Julia | 7524.918845602511 | 0.0 |
-| Python | 7524.9188456024895 | 2.9e-15 |
-| Rust | 7524.918845602512 | 1.3e-16 |
+| binding | wall | `sum(deathsK)` | notes |
+|---|---|---|---|
+| Julia | 2,538 s (688 s prepare/build + 1,777 s observed eval) | 7524.918845602511 (exact vs oracle) | peak RSS 10.6 GiB; `julia -t 2 --heap-size-hint=12G` |
+| Python | 14,455 s (~4.0 h; five `E_*` joins 2,752–2,891 s each — known interpreter gap) | 7524.9188456024895 | peak RSS 5.74 GiB |
+| Rust | 476 s (474 s prepare, dominated by the cold gated zarr fetch; ~2 s/contraction) | 7524.918845602512 | peak RSS 6.22 GiB |
 
-Every pair of records, compared field by field
+The tutorial oracle is `sum(deathsK) = 7524.918845602511`,
+`sum(deathsL) = 16979.632171487083` — Julia and Rust hit both exactly.
+
+Every record, compared field by field against every other — the three live
+records **and** the four frozen pushdown-era baselines in `contract/records/`
 ([`contract/compare_results.py`](contract/compare_results.py)):
 
 ```
-ppl: count=1520 sha256 MATCH          (all three bindings)
+ppl: count=1520 sha256 MATCH          (every record)
 total_pm25   max rel diff 0.000e+00   (BIT-IDENTICAL, every pair)
-deaths       max rel diff <= 3.0e-15  (julia vs rust: 1.2e-16 — one ulp)
-pathway emis/conc rel <= 2.1e-16
-300 checks, 0 failed
+deaths       max rel diff <= 3.1e-15
+2058 checks, 0 failed
 ```
 
 ## Why `ppl` is the number that matters
 
-`ppl` is the set of grid cells that contain at least one emission source — 1,520
-of 52,411. It is the output of a spatial join, and everything downstream is
-shaped by it.
+`ppl` is the set of grid cells that contain at least one emission source —
+1,520 of 52,411. It is the output of a spatial join, and everything downstream
+is shaped by it.
 
-**No runner computes it.** Each binding *derives* it by evaluating the model's
-own producer aggregate, gated by the spatial `join.overlap` broad phase
-(CONFORMANCE_SPEC §5.5.6). All three arrive at a byte-identical set:
+**No runner computes it.** The engine's pushdown rewrite derives it as
+`pd_support__src_cells` by evaluating the model's own producer aggregate,
+gated by the spatial `join.overlap` broad phase (CONFORMANCE_SPEC §5.5.6).
+All three engines — and the frozen pushdown-era records, where the same set
+was derived from hand-authored pushdown constructs — arrive at a
+byte-identical set:
 
 ```
 sha256 = 6f784d7e66f63872901126dabb2dd7354a96cdcd3d4585b2f52d20b6105a875b
 ```
 
-That is required, not incidental: `ppl` is integer-valued, so §5.5 demands byte
-identity regardless of which candidate-generation backend an engine uses (Julia's
-STRtree, Rust's rstar R*-tree, Python's brute-force oracle).
-
-This is also why the runners drive **`isrm_pushdown.esm`** and not `isrm.esm`:
-
-| model | `emis_src_cells` | `ppl` derived by |
-|---|---|---|
-| `isrm_clean.esm` | `src_cells` (52,411) | n/a — SR would be 52411² ≈ 330 GB |
-| `isrm.esm` | `interval` of size `N_PPL` | **the runner**, passed in as `src_cell_of_ppl` |
-| `isrm_pushdown.esm` | `derived` via `join.overlap` | **the graph** |
-
-Driving `isrm.esm` would have produced exactly the same death totals while
-proving nothing: the spatial join would have happened in three hand-written
-runners rather than in the spec.
+That is required, not incidental: `ppl` is integer-valued, so §5.5 demands
+byte identity regardless of which candidate-generation backend an engine uses
+(Julia's STRtree, Rust's rstar R*-tree, Python's brute-force oracle). A float
+tolerance here would paper over a real disagreement about *which cells emit*.
 
 ## The projection pushdown
 
 The full SR matrix is 52,411 × 52,411 per pathway — about 330 GB across five
 pathways. None of it is downloaded.
 
-Value invention runs *first* and derives the 1,520 members; the SR fetch is then
+The rewrite runs *first* and derives the 1,520 members; the SR fetch is then
 built from them and pushed down to the zarr reader, which fetches only the
 intersecting chunks:
 
 ```
-gated SR fetch: layer 0, 1520 of 52411 source cells, all receptors
+gated SR fetch: 1520 of 52411 source cells, all receptors
 ```
 
-The gate also drives *enumeration*, not just filtering. At full scale the
-producer visits **43,668 tuples out of a 2,287,740,150-tuple product** — it
-iterates the broad-phase candidate pairs directly rather than testing every
-`(record, cell)` combination.
+The gate also drives *enumeration*, not just filtering: the producer visits
+the broad-phase candidate pairs directly rather than testing every
+`(record, cell)` combination of the 2.3-billion-tuple product.
 
 ## Layout
 
 ```
-isrm.esm                  the model (isrm.esm, isrm_clean.esm, isrm_pushdown.esm)
-contract/                 the shared result record: schema, emitters, comparator
-run-model-jl/             Julia STEP-0 reference oracle    (mode=oracle_step0)
-run-model-jl-pushdown/    Julia runner through the graph   (mode=runtime_observed_graph)
-run-model-py/             Python runner through the graph  (mode=runtime_observed_graph)
-run-model-rs/             Rust runner through the graph    (mode=runtime_observed_graph)
+isrm.esm          the model — one document, no variants
+contract/         the shared result record: schema, emitters (results.jl/.py),
+                  comparator, and records/ — four frozen pushdown-era
+                  full-scale baselines the live runs are compared against
+run-jl/           Julia shim   (run.jl; setup.jl instantiates the project)
+run-py/           Python shim  (run.py; requirements.txt is the venv recipe)
+run-rs/           Rust shim    (cargo project)
+data/             untracked — the EGU FF10 zip lives here
 ```
 
-Each runner emits a record conforming to
-[`contract/results_schema.json`](contract/results_schema.json). The `mode` field
-is load-bearing: `oracle_step0` marks numbers produced by hand-written STEP-0
-arithmetic over the loader outputs — a reference, *not* evidence that a binding
-executes the spec. Only `runtime_observed_graph` records make that claim.
+Each shim emits a record conforming to
+[`contract/results_schema.json`](contract/results_schema.json) with
+`mode="runtime_observed_graph"` — the mode that claims the numbers came from
+the binding's evaluation of the spec, not from hand-written arithmetic.
 
-Comparing the two Julia records is the sharpest check available, since it holds
-the engine fixed and varies only whether the math came from the spec:
+## Prerequisites
 
-```
---- julia[oracle_step0] vs julia[runtime_observed_graph] ---
-  ppl: count=1520 sha256 MATCH
-  pathway emis rel 0.00e+00   conc rel 0.00e+00   (all five, bit-identical)
-  deaths.krewski   max rel diff 3.183e-16
-```
+* **Sibling checkouts** (none of these packages are published) next to this
+  repo, i.e. `../EarthSciAST` and `../EarthSciIO`:
+  * EarthSciAST at `ea64f510` or later — all three bindings need `prepare` +
+    `pushdown_rewrite`;
+  * EarthSciIO at `68d544e` or later — the FF10 reader needs
+    `members`/`member_glob` + `skip_header_row`.
 
-## Running them
+  The shims resolve them relative to the repo; override with `EA_PATH` /
+  `IO_PATH`.
+* **The EGU zip**: `data/2016fd_inputs_point.zip` (69 MB), from
+  `https://gaftp.epa.gov/air/emismod/2016/alpha/2016fd/emissions/2016fd_inputs_point.zip`
+  (the document's `EGU_Emis.source.url_template`). Override with `EGU_ZIP`.
+  When the file is absent each shim falls back to fetching that URL through
+  the EarthSciIO cache — but gaftp.epa.gov is slow and flaky, so a manual
+  download into `data/` is the reliable path.
+* **Julia** (developed on 1.12): `julia --project=run-jl run-jl/setup.jl`
+  dev-tracks the two checkouts and instantiates.
+* **Python ≥ 3.11** (zarr 3.x requires it). Build the venv on disk-backed
+  scratch per the recipe in [`run-py/requirements.txt`](run-py/requirements.txt):
+
+  ```bash
+  python3.12 -m venv /scratch.local/$USER/isrm-py-venv
+  /scratch.local/$USER/isrm-py-venv/bin/pip install -r run-py/requirements.txt
+  ```
+* **Rust** (stable toolchain). The s2geometry shim is a cdylib that is not on
+  the runtime linker path, so the built binary needs `LD_LIBRARY_PATH`
+  pointing at the build output (see below).
+
+## Running the shims
 
 ```bash
-# Julia
-cd run-model-jl-pushdown && julia -t 2 --heap-size-hint=12G --project=. L3_full.jl
+cd isrm.esm   # this repo
 
-# Python (needs >= 3.11; zarr 3.x requires it)
-cd run-model-py && python run_model.py
+# Julia
+julia -t 2 --heap-size-hint=12G --project=run-jl run-jl/run.jl
+
+# Python
+/scratch.local/$USER/isrm-py-venv/bin/python run-py/run.py
 
 # Rust
-cd run-model-rs && cargo build --release
-LD_LIBRARY_PATH=$(dirname $(find target -name libs2bindings_shim.so | head -1)) \
-    ./target/release/run-model-rs
+( cd run-rs && cargo build --release )
+LD_LIBRARY_PATH=$(dirname $(find run-rs/target -name libs2bindings_shim.so | head -1)) \
+    ./run-rs/target/release/run-rs
 
-# compare whatever records exist
-python3 contract/compare_results.py run-model-jl/results.json \
-    run-model-jl-pushdown/results.json run-model-py/results.json run-model-rs/results.json
+# compare whatever records exist against the frozen baselines
+python3 contract/compare_results.py contract/records/*.json \
+    run-jl/results.json run-py/results.json run-rs/results.json
 ```
 
-Every runner takes `ISRM_FIRSTN` / `L3_FIRSTN` to truncate the emission-record
-list for a fast reduced run, and honours `ISRM_SCRATCH`. **Point scratch at a
-disk-backed path** — on a cluster whose root filesystem is `tmpfs`, SR blobs
-written under `/tmp` consume the memory the model needs.
+Each shim writes `results.json` (or `results_reduced.json`) next to itself.
+
+* `ISRM_FIRSTN=200` truncates the emission-record list for a fast reduced
+  run (~2 min in Julia after precompile).
+* `ISRM_SCRATCH` **must be disk-backed**. On this cluster `/tmp` is a tmpfs:
+  SR chunk blobs written there consume the same memory cgroup the model
+  needs. The shims default to `/scratch.local/$USER/isrm-esm` for exactly
+  that reason.
+* Size `--heap-size-hint` to what is actually free in the memory cgroup —
+  here a 40 GB cgroup shared with other jobs, hence 12G.
+* `ISRM_ESIO_CACHE` can point one shim at another's cache (the format is
+  cross-language) to skip the ~6-minute cold SR fetch.
 
 ## Timing
 
-Same machine, full scale, one core each:
-
-| binding | wall | dominated by |
-|---|---|---|
-| Rust | 569 s | 382 s gated SR fetch |
-| Julia | 2,579 s | 586 s build + ~300 s/observed |
-| Python | 15,938 s | 15,223 s in five `E_*` joins |
-
-The spread is one known gap, not three engines of differing quality. The `E_*`
-emission-binning join is **3.3 s in Rust and ~3,000 s in Python** — the same
-aggregate over the same 66.3M `(cell, record)` pairs, ~900× apart. Python's
-interpreter vectorizes pure maps and scaled-product contractions (einsum), but
-this body is a contraction with an `ifelse` containment predicate, which matches
-neither, so it falls to a per-pair Python loop. The compiled evaluators handle it
-directly.
+The wall-clock spread in the result table is **one known gap, not three
+engines of differing quality**. The `E_*` emission-binning join is ~3.3 s in
+Rust and ~2,800 s in Python — the same aggregate over the same 66.3M
+`(cell, record)` pairs, ~850× apart. Python's interpreter vectorizes pure maps
+and scaled-product contractions (einsum), but this body is a contraction with
+an `ifelse` containment predicate, which matches neither, so it falls to a
+per-pair Python loop. The compiled evaluators handle it directly. Everything
+else — the gated fetch, the SR contractions, the deaths math — is within
+small factors across the three.
 
 ## Tolerances
 
@@ -163,14 +198,25 @@ directly.
 
 That is not arbitrary: three engines contract a 1,520-term sum in different
 orders, and reassociating a float sum changes the last bits. The measured
-cross-binding spread is ≤ 3.0e-15. Asserting tighter would be asserting on
+cross-binding spread is ≤ 3.1e-15. Asserting tighter would be asserting on
 summation order rather than on the model.
 
 One subtlety worth recording, because it nearly produced a false failure: the
 record's `sum` must be a property of the *data*, not of the summing language.
-Julia's `sum` is pairwise and CPython 3.12's is Neumaier-compensated, but Rust's
-`Iterator::sum` is a naive fold — with **bit-identical** `total_pm25` fields
-(same sha256, same samples) the Rust total differed by 2.9e-13 purely from
-accumulation error. At full scale that could have exceeded the tolerance and
-reported a disagreement between provably identical fields. All emitters now use
-compensated summation.
+Julia's `sum` is pairwise and CPython 3.12's is Neumaier-compensated, but
+Rust's `Iterator::sum` is a naive fold — with **bit-identical** `total_pm25`
+fields (same sha256, same samples) the Rust total differed by 2.9e-13 purely
+from accumulation error. At full scale that could have exceeded the tolerance
+and reported a disagreement between provably identical fields. All emitters
+use compensated summation.
+
+## History
+
+Tag **`pushdown-era`** holds the previous state of this repo: three `.esm`
+variants (`isrm.esm` / `isrm_clean.esm` / `isrm_pushdown.esm`), four
+runner-mediated `run-model-*` directories whose pushdown constructs were
+hand-authored in the document rather than derived by the engine, and the
+hand-written STEP-0 Julia oracle (`mode=oracle_step0`) that first reproduced
+the tutorial totals. Its four full-scale result records are frozen in
+`contract/records/` and remain part of every comparator run — the current
+tree's records are bit-identical to them where the spec demands it.

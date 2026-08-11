@@ -6,8 +6,10 @@
 //!   ISRM_MODEL       the .esm to drive     (default: <repo>/isrm.esm)
 //!   ISRM_SCRATCH     bulk scratch root     (default: first writable of
 //!                    /scratch.local/$USER/isrm-esm, $SCRATCH/isrm-esm, tempdir)
-//!   EGU_ZIP          FF10 point-source zip (default: <repo>/run-model-jl/data/
-//!                    2016fd_inputs_point.zip)
+//!   EGU_ZIP          FF10 point-source zip (default: <repo>/data/
+//!                    2016fd_inputs_point.zip; when absent, main.rs falls back
+//!                    to fetching the document's source.url_template through
+//!                    the EarthSciIO cache)
 //!   ISRM_ESIO_CACHE  EarthSciIO cache root (default: $ISRM_SCRATCH/
 //!                    run-rs-esio-cache; point it at an existing cache — e.g.
 //!                    run-jl's — to reuse already-fetched SR chunk blobs, the
@@ -41,10 +43,7 @@ pub fn model() -> PathBuf {
 pub fn egu_zip() -> PathBuf {
     match std::env::var("EGU_ZIP") {
         Ok(p) => PathBuf::from(p),
-        Err(_) => repo()
-            .join("run-model-jl")
-            .join("data")
-            .join("2016fd_inputs_point.zip"),
+        Err(_) => repo().join("data").join("2016fd_inputs_point.zip"),
     }
 }
 

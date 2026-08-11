@@ -101,9 +101,22 @@ fn read_egu(
     firstn: Option<usize>,
 ) -> Result<(Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>), String> {
     let xe = &egu_meta["metadata"]["x_esd"];
-    let zip = paths::egu_zip();
+    let mut zip = paths::egu_zip();
     if !zip.is_file() {
-        return Err(format!("EGU zip not found at {zip:?} — set EGU_ZIP"));
+        // Fall back to the document's declared source, fetched once through
+        // the EarthSciIO cache (content-addressed under the cache root).
+        let url = egu_meta["source"]["url_template"]
+            .as_str()
+            .ok_or("EGU_Emis source.url_template missing")?;
+        println!("  EGU zip not found at {} — fetching {url} via the cache ...", zip.display());
+        let cache = earthsciio::Cache::builder()
+            .data_dir(paths::esio_cache().join("EGU_Emis"))
+            .build()
+            .map_err(|e| format!("EGU cache: {e}"))?;
+        let blob = cache
+            .fetch(&earthsciio::FetchRequest::new(url).loader("EGU_Emis"))
+            .map_err(|e| format!("EGU fetch {url}: {e}"))?;
+        zip = blob.path;
     }
     let reader = Ff10Reader::new()
         .member_glob(xe["member_filter"].as_str().ok_or("EGU_Emis x_esd.member_filter missing")?)

@@ -1,7 +1,7 @@
 #!/usr/bin/env julia
 # =============================================================================
-# run.jl — Phase 1 (clean consolidation): the Julia binding drives the single
-# clean `isrm.esm` end to end through the PUBLIC EarthSciAST surface.
+# run.jl — the JULIA binding drives the single clean `isrm.esm` end to end
+# through the PUBLIC EarthSciAST surface.
 #
 #   * `prepare(file; providers, const_arrays, pushdown_rewrite=true)` — the
 #     automatic projection-pushdown rewrite runs inside the engine; the SR
@@ -11,6 +11,10 @@
 #   * the SR / grid / pop / mortality providers come FROM THE DOCUMENT
 #     (`providers_from_document`: format = `metadata.esio_format`, URL =
 #     `source.url_template`);
+#   * the EGU FF10 records are read through EarthSciIO's OWN ff10 reader with
+#     the document-declared container options (`metadata.x_esd`: the zip
+#     `member_filter` glob and `skip_header_row`) — no hand unzip, no hand
+#     header-strip; the POLID→code map is the document's `pollutant_codes`;
 #   * every reported number is the binding's evaluation of the document's
 #     observed graph (`observed_field`) — NO hand-written STEP-0 math here.
 #
@@ -24,7 +28,6 @@ import Pkg; Pkg.activate(@__DIR__; io=devnull)
 using EarthSciAST
 using EarthSciIO
 using Blosc                     # activates EarthSciIO's zarr codec extension
-using ZipFile
 import GeometryOps, GeoInterface # STRtree broad-phase fast path for the join gate
 import JSON
 const EA = EarthSciAST
@@ -40,74 +43,48 @@ const ORACLE_L = 16979.632171487083
 peak_rss_bytes() = parse(Int, split(read("/proc/self/statm", String))[2]) * 4096
 
 # =============================================================================
-# EGU FF10 ingest — TEMPORARY (Phase 2 closes this).
+# EGU FF10 ingest — through EarthSciIO's ff10 reader, options FROM THE DOCUMENT.
 #
-# LOUD CAVEAT: the document's EGU_Emis data_loader declares the zip URL and the
-# ff10 esio_format, but the format stack cannot yet express (a) zip MEMBER
-# selection (`*egu*.csv` inside 2016fd_inputs_point.zip) or (b) the
-# `country_cd,...` column-header row these members carry, which the FF10
-# reader's fixed 77-column schema cannot skip. Until Phase 2 lands those two
-# capabilities, THIS BLOCK stands in for the EGU_Emis provider: it reads the
-# zip at $EGU_ZIP, strips the header row, and feeds each member through
-# EarthSciIO's own FF10Reader (`read_native`). The POLID→pathway-code map
-# mirrors the document's G3 note (`is_*` observeds select by code band) and is
-# copied verbatim from the validated run-model.jl so record recognition is
-# identical. Everything DOWNSTREAM of these raw arrays — projection, spatial
-# join, support-set invention, binning, contraction, deaths — is the engine
-# evaluating the document.
+# The document's EGU_Emis loader declares the zip container (`x_esd.container`),
+# the member glob (`x_esd.member_filter`, "*egu*"), the EPA column-header quirk
+# (`x_esd.skip_header_row`), and the POLID→pathway-code integer map
+# (`x_esd.pollutant_codes`) the is_* observeds compare against. This function
+# contributes input PLUMBING only: read the table, map the codes, drop the
+# unrecognised/non-finite records (per the document's note), truncate for a
+# reduced run. The reader concatenates members in sorted (lexicographic) order —
+# identical to the zip order for this archive, so ISRM_FIRSTN selects the same
+# records as every previous runner. Everything DOWNSTREAM of these raw arrays —
+# projection, spatial join, support-set invention, binning, contraction,
+# deaths — is the engine evaluating the document.
 # =============================================================================
-const VOC_SET  = Set(["VOC","VOC_INV","XYL","TOL","TERP","PAR","OLE","NVOL","MEOH","ISOP","IOLE","FORM","ETOH","ETHA","ETH","ALD2","ALDX","CB05_ALD2","CB05_ALDX","CB05_BENZENE","CB05_ETH","CB05_ETHA","CB05_ETOH","CB05_FORM","CB05_IOLE","CB05_ISOP","CB05_MEOH","CB05_OLE","CB05_PAR","CB05_TERP","CB05_TOL","CB05_XYL","ETHANOL","NHTOG","NMOG"])
-const PM25_SET = Set(["PM25-PRI","PM2_5","DIESEL-PM25","PAL","PCA","PCL","PEC","PFE","PK","PMG","PMN","PMOTHR","PNH4","PNO3","POC","PSI","PSO4","PTI"])
-const NOX_SET  = Set(["NOX","HONO","NO","NO2"])
-const NH3_SET  = Set(["NH3"])
-const SOX_SET  = Set(["SO2"])
-# pathway CODE bands, per the document's is_* observeds (G3): SOA 1-35,
-# pNO3 36-39, pNH4 40, pSO4 41, PrimaryPM25 42-59; 0 = unrecognised (dropped).
-pathcode(p) = (u = uppercase(strip(p));
-    u in VOC_SET ? 1.0 : u in PM25_SET ? 42.0 : u in NOX_SET ? 36.0 :
-    u in NH3_SET ? 40.0 : u in SOX_SET ? 41.0 : 0.0)
 
-# One zip member → NativeDataset via EarthSciIO's FF10 reader, header stripped.
-# (Minimal logic from the validated run-model.jl `read_ff10_egu`.)
-function read_ff10_egu(zippath, member, vars)
-    text = ""
-    let r = ZipFile.Reader(zippath)
-        for f in r.files; f.name == member && (text = String(read(f)); break); end
-        close(r)
-    end
-    lines = split(text, '\n')
-    kept = filter(ln -> !startswith(lowercase(strip(ln)), "country_cd"), lines)
-    tmp = joinpath(mktempdir(SCRATCH), basename(member))
-    write(tmp, join(kept, '\n'))
-    nds = EarthSciIO.read_native(EarthSciIO.FF10Reader(), tmp; variables=vars)
-    rm(dirname(tmp); recursive=true, force=true)
-    return nds
+"""The EGU zip to read: `\$EGU_ZIP` (default `<repo>/data/…`) when present,
+otherwise the document's `source.url_template` fetched once through the
+EarthSciIO cache (content-addressed under `cache_root`)."""
+function resolve_egu_zip(egu_meta, cache_root)
+    isfile(EGU_ZIP) && return EGU_ZIP
+    url = String(egu_meta["source"]["url_template"])
+    println("  EGU zip not found at $EGU_ZIP — fetching $url via the EarthSciIO cache ...")
+    flush(stdout)
+    entry = EarthSciIO.fetch_blob(EarthSciIO.Cache(; root=joinpath(cache_root, "EGU_Emis")),
+                                  url; source_loader="EGU_Emis")
+    return entry.path
 end
 
 """Raw EGU emission-record arrays (lon, lat, annual, pathway code), recognised
-+ finite records only — the same filter the validated runners apply. Members
-are iterated in ZIP order (matching run-model.jl / the pushdown-era reduced
-records, so ISRM_FIRSTN truncation selects the same records)."""
-function read_egu(zippath; firstn=nothing)
-    isfile(zippath) || error("EGU zip not found at $zippath — set EGU_ZIP")
-    members = String[]
-    let r = ZipFile.Reader(zippath)
-        for f in r.files
-            occursin("egu", lowercase(f.name)) && endswith(lowercase(f.name), ".csv") &&
-                push!(members, f.name)
-        end
-        close(r)
-    end
-    isempty(members) && error("no *egu*.csv members in $zippath")
-    println("  EGU members: ", members)
-    lon = Float64[]; lat = Float64[]; ann = Float64[]; code = Float64[]
-    for m in members
-        nds = read_ff10_egu(zippath, m, ["POLID", "ANN_VALUE", "LONGITUDE", "LATITUDE"])
-        append!(code, Float64[pathcode(String(p)) for p in nds["POLID"].data])
-        append!(ann,  Float64.(nds["ANN_VALUE"].data))
-        append!(lon,  Float64.(nds["LONGITUDE"].data))
-        append!(lat,  Float64.(nds["LATITUDE"].data))
-    end
++ finite records only — the filter the document's note declares."""
+function read_egu(egu_meta, zippath; firstn=nothing)
+    xe = egu_meta["metadata"]["x_esd"]
+    nds = EarthSciIO.read_native(EarthSciIO.FF10Reader(), zippath;
+        member_glob = String(xe["member_filter"]),
+        skip_header_row = Bool(get(xe, "skip_header_row", false)),
+        variables = ["POLID", "ANN_VALUE", "LONGITUDE", "LATITUDE"])
+    codes = Dict{String,Float64}(uppercase(String(k)) => Float64(v)
+                                 for (k, v) in xe["pollutant_codes"])
+    code = Float64[get(codes, uppercase(strip(String(p))), 0.0) for p in nds["POLID"].data]
+    ann  = Float64.(nds["ANN_VALUE"].data)
+    lon  = Float64.(nds["LONGITUDE"].data)
+    lat  = Float64.(nds["LATITUDE"].data)
     n_all = length(code)
     keep = [code[i] > 0.0 && isfinite(lon[i]) && isfinite(lat[i]) && isfinite(ann[i])
             for i in 1:n_all]
@@ -146,20 +123,24 @@ function main()
     println("model:   $MODEL")
     println("scratch: $SCRATCH")
 
-    # ---- inputs: EGU records (TEMPORARY shim ingest, see above) -------------
-    println("reading EGU emissions ..."); flush(stdout)
-    lon, lat, ann, code = read_egu(EGU_ZIP; firstn=firstn)
+    doc_raw = JSON.parsefile(MODEL)
+    cache_root = joinpath(SCRATCH, "run-jl-esio-cache")
+
+    # ---- inputs: EGU records via the document-declared FF10 reader options --
+    println("reading EGU emissions (EarthSciIO ff10: member_glob + skip_header_row) ...")
+    flush(stdout)
+    egu_meta = doc_raw["data_loaders"]["EGU_Emis"]
+    lon, lat, ann, code = read_egu(egu_meta, resolve_egu_zip(egu_meta, cache_root);
+                                   firstn=firstn)
     N_REC = length(lon)
     println("  N_REC = $N_REC"); flush(stdout)
 
     # ---- providers FROM THE DOCUMENT ----------------------------------------
-    doc_raw = JSON.parsefile(MODEL)
-    cache_root = joinpath(SCRATCH, "run-jl-esio-cache")
     sr_arrays = String[a for a in keys(doc_raw["data_loaders"]["ISRM_SR"]["metadata"]["x_esd"]["arrays"])
                        if !(a in ("TotalPop", "MortalityRate", "W", "S", "E", "N"))]
     seed_empty_zattrs(joinpath(cache_root, "ISRM_SR"),
                       doc_raw["data_loaders"]["ISRM_SR"]["source"]["url_template"], sr_arrays)
-    println("building providers from the document (ISRM_SR; EGU_Emis is the Phase-2 gap) ...")
+    println("building providers from the document (ISRM_SR) ...")
     providers = EA.providers_from_document(doc_raw; cache_root=cache_root,
                                            loaders=["ISRM_SR"])
     println("  providers: ", sort(collect(keys(providers)))); flush(stdout)
@@ -175,7 +156,7 @@ function main()
         for k in ("W", "S", "E", "N"))
     println("  grid prefix in $(round(t_grid, digits=1)) s"); flush(stdout)
 
-    # ---- const arrays: the EGU loader's variables (temporary), src rects ----
+    # ---- const arrays: the EGU loader's variables, src rects ----------------
     ca = Dict{String,Any}(src_rects)
     ca["EGU_Emis.lon"] = lon;  ca["EGU_Emis.lat"] = lat
     ca["EGU_Emis.annual"] = ann; ca["EGU_Emis.pollutant"] = code
@@ -240,7 +221,7 @@ function main()
                 round(100 * (sK - ORACLE_K) / ORACLE_K, digits=6), "%")
         println("  target deathsL=$ORACLE_L rel.err ",
                 round(100 * (sL - ORACLE_L) / ORACLE_L, digits=6), "%")
-        println("PHASE 1 FULL: ", (okK && okL) ? "PASS" : "FAIL")
+        println("FULL SCALE: ", (okK && okL) ? "PASS" : "FAIL")
     end
     println("="^70)
 
