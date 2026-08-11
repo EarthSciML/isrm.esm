@@ -1,5 +1,14 @@
 # isrm.esm — the InMAP ISRM as a language-agnostic model
 
+> **TRANSITION (2026-08-10).** `isrm.esm` is now the former `isrm_clean.esm` — the
+> fully-automatic variant (in-model Lambert projection, engine-derived pushdown,
+> no runner pre-pass). The runners below still target the retired
+> `isrm_pushdown.esm` and are being replaced by thin shims phase by phase; until
+> that lands they do not run from this tree. The last fully-working pushdown
+> state is tagged **`pushdown-era`**, and its four full-scale result records are
+> frozen in `contract/records/` as the comparison baseline. The numbers quoted in
+> this README are from that baseline.
+
 `isrm.esm` states the InMAP source–receptor tutorial as an
 [EarthSciAST](https://github.com/EarthSciML/EarthSciAST) `.esm` document, and
 computes it three times — once through each of EarthSciAST's Julia, Python, and
