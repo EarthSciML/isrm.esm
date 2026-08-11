@@ -1,0 +1,38 @@
+# Phase 4 shim: the Rust binding drives the single clean isrm.esm through the
+# PUBLIC earthsci_ast `prepare` surface (pushdown_rewrite=true, providers from
+# the document). See src/main.rs.
+#
+# The earthsci-ast dependency points at THE CANONICAL SIBLING checkout. During
+# Phase-4 development the `clean-consolidation-p4` branch lived in the
+# EarthSciAST-p4 worktree; builds were made with this path temporarily set to
+# ../../EarthSciAST-p4/pkg/earthsci-ast-rs (Cargo cannot `[patch]`/`paths`-
+# override a path dependency, so the override is a documented temporary edit,
+# restored before commit). Once clean-consolidation-p4 merges into the
+# canonical checkout, this manifest builds as committed.
+
+[package]
+name = "run-rs"
+version = "0.1.0"
+edition = "2021"
+description = "ISRM through the Rust binding's public prepare() over the clean isrm.esm"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "run-rs"
+path = "src/main.rs"
+
+[dependencies]
+# The `esio` feature pulls in the EarthSciIO bridge (EsioProvider +
+# providers_from_document), which is how the gated SR fetch reaches the live
+# zarr store.
+earthsci-ast = { path = "../../EarthSciAST/pkg/earthsci-ast-rs", default-features = false, features = [
+    "esio",
+] }
+earthsciio = { path = "../../EarthSciIO/rust" }
+ndarray = "0.16"
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+sha2 = "0.10"
+
+[profile.release]
+debug = false

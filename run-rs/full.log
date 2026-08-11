@@ -1,0 +1,61 @@
+FULL run — whole domain (target deathsK≈7524.92, deathsL≈16979.63)
+model:   /projects/illinois/eng/cee/ctessum/ctessum/code/isrm-esm-p4/isrm.esm
+scratch: /scratch.local/ctessum/isrm-esm
+cache:   /scratch.local/ctessum/isrm-esm/run-rs-esio-cache
+reading EGU emissions (EarthSciIO ff10: member_glob + skip_header_row) ...
+  EGU FF10 records: 121248 read, 43650 recognised-pathway kept
+  N_REC = 43650  in 0.8 s
+building providers from the document (ISRM_SR) ...
+  providers: ["ISRM_SR.E", "ISRM_SR.MortalityRate", "ISRM_SR.N", "ISRM_SR.PrimaryPM25", "ISRM_SR.S", "ISRM_SR.SOA", "ISRM_SR.TotalPop", "ISRM_SR.W", "ISRM_SR.pNH4", "ISRM_SR.pNO3", "ISRM_SR.pSO4"]
+materializing grid prefix (src_W/S/E/N) ...
+  grid prefix in 0.6 s
+prepare(pushdown_rewrite=true) — N_REC=43650 ...
+  [prepare] build-time coordinate X -> [43650]
+  [prepare] build-time coordinate Y -> [43650]
+  [prepare] member_factor pd_member_factor__src_cells <- |pd_support__src_cells| = 1520
+  [prepare] gated fetch ISRM_SR.PrimaryPM25 -> SR_PrimaryPM25 [1520, 52411]
+  [prepare] gated fetch ISRM_SR.SOA -> SR_SOA [1520, 52411]
+  [prepare] gated fetch ISRM_SR.pNH4 -> SR_pNH4 [1520, 52411]
+  [prepare] gated fetch ISRM_SR.pNO3 -> SR_pNO3 [1520, 52411]
+  [prepare] gated fetch ISRM_SR.pSO4 -> SR_pSO4 [1520, 52411]
+  [prepare] is_NH3                   shape=[43650]      3.0 s
+  [prepare] is_NOx                   shape=[43650]      2.0 s
+  [prepare] is_PM25                  shape=[43650]      2.0 s
+  [prepare] is_SOx                   shape=[43650]      2.0 s
+  [prepare] is_VOC                   shape=[43650]      2.0 s
+  [prepare] pd_cell__src_cells__src_E shape=[1520]      2.0 s
+  [prepare] pd_cell__src_cells__src_N shape=[1520]      2.0 s
+  [prepare] pd_cell__src_cells__src_S shape=[1520]      2.0 s
+  [prepare] pd_cell__src_cells__src_W shape=[1520]      2.0 s
+  [prepare] rcv_cx                   shape=[52411]      2.0 s
+  [prepare] rcv_cy                   shape=[52411]      2.0 s
+  [prepare] E_NH3                    shape=[1520]      3.1 s
+  [prepare] E_NOx                    shape=[1520]      3.1 s
+  [prepare] E_PM25                   shape=[1520]      3.1 s
+  [prepare] E_SOx                    shape=[1520]      3.1 s
+  [prepare] E_VOC                    shape=[1520]      3.1 s
+  [prepare] conc_PrimaryPM25         shape=[52411]      2.1 s
+  [prepare] conc_SOA                 shape=[52411]      2.1 s
+  [prepare] conc_pNH4                shape=[52411]      2.1 s
+  [prepare] conc_pNO3                shape=[52411]      2.1 s
+  [prepare] conc_pSO4                shape=[52411]      2.1 s
+  [prepare] TotalPM25                shape=[52411]      2.0 s
+  [prepare] pm_PrimaryPM25           shape=[52411]      2.0 s
+  [prepare] pm_SOA                   shape=[52411]      2.0 s
+  [prepare] pm_pNH4                  shape=[52411]      2.0 s
+  [prepare] pm_pNO3                  shape=[52411]      2.0 s
+  [prepare] pm_pSO4                  shape=[52411]      2.0 s
+  [prepare] deathsK                  shape=[52411]      2.0 s
+  [prepare] deathsL                  shape=[52411]      2.0 s
+PREPARE done in 474.5 s  (peak RSS so far: 6.22 GiB)
+engine-derived support set: |members| = 1520 of 52411 source cells
+
+======================================================================
+  sum(deathsK) = 7524.918845602512
+  sum(deathsL) = 16979.632171487083
+  Σ TotalPM25  = 20619.01787508439
+  target deathsK=7524.918845602511  rel.err 0.000000%
+  target deathsL=16979.632171487083 rel.err 0.000000%
+PHASE 4 FULL: PASS
+======================================================================
+wrote /projects/illinois/eng/cee/ctessum/ctessum/code/isrm-esm-p4/run-rs/results.json  (mode=runtime_observed_graph, |ppl|=1520, sum deathsK=7524.918845602512)
