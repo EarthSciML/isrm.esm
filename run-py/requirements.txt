@@ -1,0 +1,11 @@
+# Phase-3 Python shim environment (needs Python >= 3.11 for the zarr extra).
+#
+# Build a venv on DISK-BACKED scratch (never a tmpfs /tmp):
+#   python3.12 -m venv /scratch.local/$USER/isrm-py-venv
+#   /scratch.local/$USER/isrm-py-venv/bin/pip install -r requirements.txt
+#
+# The two editable installs point at sibling checkouts (adjust or set
+# EA_PATH/IO_PATH env overrides consumed by paths.py instead).
+-e ../../EarthSciIO[zarr,s3]
+-e ../../EarthSciAST/pkg/earthsci-ast-py
+numpy

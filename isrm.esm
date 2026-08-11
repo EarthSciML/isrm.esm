@@ -368,6 +368,7 @@
      "format": "ff10",
      "container": "zip",
      "member_filter": "*egu*",
+     "skip_header_row": true,
      "crs": "EPSG:4269",
      "columns": {
       "pollutant": 12,
