@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
 # =============================================================================
-# run.py — Phase 3 (clean consolidation): the PYTHON binding drives the single
-# clean `isrm.esm` end to end through the PUBLIC earthsci_ast surface.
+# run.py — the PYTHON binding drives the single clean `isrm.esm` end to end
+# through the PUBLIC earthsci_ast surface. NOTHING MODEL-SHAPED LIVES HERE:
+# this file names no pollutant, no column, no grid extent and no record count.
 #
-#   * `prepare(doc, providers=…, const_arrays=…, pushdown_rewrite=True)` — the
-#     automatic projection-pushdown rewrite runs inside the engine; the SR
-#     provider gates are derived from the rewrite's own record
+#   * `prepare(doc, providers=…, pushdown_rewrite=True)` — the automatic
+#     projection-pushdown rewrite runs inside the engine; the SR provider gates
+#     are derived from the rewrite's own record
 #     (`metadata.x_esd.pushdown.gated_select`), so this file hand-authors NO
 #     gate dict and implements NO provider protocol;
-#   * the SR / grid / pop / mortality providers come FROM THE DOCUMENT
-#     (`providers_from_document`: format = `metadata.esio_format`, URL =
-#     `source.url_template`);
-#   * the EGU FF10 records are read through EarthSciIO's OWN ff10 reader with
-#     the document-declared container options (`metadata.x_esd`: the zip
-#     `member_filter` glob and `skip_header_row`) — no hand unzip, no hand
-#     header-strip; the POLID→code map is the document's `pollutant_codes`;
+#   * EVERY provider comes FROM THE DOCUMENT (`providers_from_document`:
+#     format = `metadata.esio_format`, URL = `source.url_template`) — the SR
+#     slabs, the grid, the population, AND the EGU FF10 table, whose ingest the
+#     loader now declares in full (esm-spec §8.9): `reader_options` (the zip
+#     member glob + header row), `codes` (POLID text -> the pathway enum, an
+#     unrecognised code dropping the record), `record_filter` (no coordinate /
+#     no annual total is not a record) and `extent` (the surviving count binds
+#     N_REC). The src-cell rectangles are the `select` range `W[0:N_SRC]` on
+#     their own loader variables;
 #   * every reported number is the binding's evaluation of the document's
 #     observed graph (`observed_field`) — NO hand-written STEP-0 math here,
 #     and NO hand LCC projection (raw emis_lon/emis_lat are the parameters;
@@ -46,7 +49,6 @@ sys.path.insert(0, os.path.join(paths.REPO, "contract"))
 import results as contract  # noqa: E402
 
 T0 = time.time()
-N_SRC = 52411  # metaparameter default; SR source/receptor cells
 ORACLE_K = 7524.918845602511
 ORACLE_L = 16979.632171487083
 
@@ -65,63 +67,55 @@ def log(msg: str) -> None:
 
 
 def peak_rss_bytes() -> int:
-    """VmHWM (peak resident set) from /proc, in bytes."""
-    with open("/proc/self/status") as fh:
-        for line in fh:
-            if line.startswith("VmHWM:"):
-                return int(line.split()[1]) * 1024
-    return 0
+    """Peak resident set size, in bytes.
+
+    ``VmHWM`` from ``/proc/self/status`` is the number the cross-language table
+    reports (and the one this repo's notes insist on over the cgroup's, which
+    the page cache saturates). ``getrusage`` is the portable fallback for a
+    machine with no procfs — ``ru_maxrss`` is kibibytes on Linux and BYTES on
+    macOS/BSD, hence the platform branch.
+    """
+    try:
+        with open("/proc/self/status") as fh:
+            for line in fh:
+                if line.startswith("VmHWM:"):
+                    return int(line.split()[1]) * 1024
+    except OSError:
+        pass
+    import resource
+
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return int(peak) if sys.platform == "darwin" else int(peak) * 1024
 
 
-# --------------------------------------------------------------------------- #
-# EGU FF10 ingest — through EarthSciIO's ff10 reader, options FROM THE DOCUMENT.
-#
-# The document's EGU_Emis loader declares the zip container (`x_esd.container`),
-# the member glob (`x_esd.member_filter`, "*egu*"), the EPA column-header quirk
-# (`x_esd.skip_header_row`), and the POLID→pathway-code integer map
-# (`x_esd.pollutant_codes`) the is_* observeds compare against. This function
-# contributes input PLUMBING only: read the table, map the codes, drop the
-# unrecognised/non-finite records (per the document's note), truncate for a
-# reduced run. The reader concatenates members in sorted order — identical to
-# the zip order for this archive, so ISRM_FIRSTN selects the same records as
-# every previous runner.
-# --------------------------------------------------------------------------- #
-def read_egu(egu_meta: dict, firstn: int | None):
-    xe = egu_meta["metadata"]["x_esd"]
-    eio.register_format_readers()
-    if os.path.isfile(paths.EGU_ZIP):
-        url = "file://" + os.path.abspath(paths.EGU_ZIP)
-    else:
-        # Fall back to the document's declared source, fetched once through the
-        # EarthSciIO cache (content-addressed under the cache root).
-        url = str(egu_meta["source"]["url_template"])
-        log(f"  EGU zip not found at {paths.EGU_ZIP} — fetching {url} via the cache ...")
-    loader = eio.DataLoader(
-        name="EGU_Emis",
-        format=str(egu_meta["metadata"]["esio_format"]),
-        url=url,
-        variables=["POLID", "ANN_VALUE", "LONGITUDE", "LATITUDE"],
-        reader_kwargs={
-            "member_glob": str(xe["member_filter"]),
-            "skip_header_row": bool(xe.get("skip_header_row", False)),
-        },
-    )
-    cache = eio.Cache(root=os.path.join(paths.ESIO_CACHE, "EGU_Emis"))
-    nds = eio.Provider(loader, cache).materialize()
+def metaparam(doc: dict, name: str) -> int:
+    """A metaparameter's declared default, read from the document (so no grid
+    extent is written down here)."""
+    mp = doc.get("metaparameters", {}).get(name, {})
+    return int(mp.get("default", 0))
 
-    codes_map = {str(k).upper(): float(v) for k, v in xe["pollutant_codes"].items()}
-    polid = [str(p).strip().upper() for p in nds["POLID"].data]
-    code = np.array([codes_map.get(p, 0.0) for p in polid])
-    ann = np.asarray(nds["ANN_VALUE"].data, dtype=float)
-    lon = np.asarray(nds["LONGITUDE"].data, dtype=float)
-    lat = np.asarray(nds["LATITUDE"].data, dtype=float)
-    n_all = len(code)
-    keep = (code > 0.0) & np.isfinite(lon) & np.isfinite(lat) & np.isfinite(ann)
-    lon, lat, ann, code = lon[keep], lat[keep], ann[keep], code[keep]
-    log(f"  EGU FF10 records: {n_all} read, {len(lon)} recognised-pathway kept")
-    if firstn is not None:
-        lon, lat, ann, code = lon[:firstn], lat[:firstn], ann[:firstn], code[:firstn]
-    return lon, lat, ann, code
+
+def record_loaders(doc: dict) -> list[str]:
+    """The loaders that DISCOVER their own extent (``extent.metaparameter``) —
+    the record-bearing tables of the document, whatever they happen to be
+    called. The two knobs below are scale/locality concerns of a RUN, not of
+    the model, and both are expressed in the document's own vocabulary."""
+    return [
+        name
+        for name, ld in (doc.get("data_loaders") or {}).items()
+        if isinstance(ld, dict) and isinstance(ld.get("extent"), dict)
+        and ld["extent"].get("metaparameter")
+    ]
+
+
+def truncate_records(doc: dict, n: int) -> None:
+    """REDUCED runs: truncate every record-discovering loader to its first ``n``
+    DELIVERED records with a loader-level ``select`` range (esm-spec §8.9.2).
+    Because the selection follows the loader's own ``record_filter``, this picks
+    the same records the previous runners' post-filter ``[:n]`` did — and
+    ``extent`` then re-discovers the smaller N_REC by itself."""
+    for name in record_loaders(doc):
+        doc["data_loaders"][name]["select"] = {"axes": [{"range": {"start": 0, "stop": n}}]}
 
 
 # zarr workaround (unchanged from the validated runners): the SR arrays carry NO
@@ -147,7 +141,6 @@ def main() -> int:
     from earthsci_ast.data_loaders.esio_provider import providers_from_document
     from earthsci_ast.prepare import observed_field, prepare
     from earthsci_ast.simulation_array import BuildInspection
-    from earthsci_ast.simulation_loaders import _provider_sample_field
 
     log(
         f"{'REDUCED' if reduced else 'FULL'} run"
@@ -163,16 +156,15 @@ def main() -> int:
 
     with open(paths.MODEL) as fh:
         doc = json.load(fh)
+    if reduced:
+        truncate_records(doc, firstn)
 
-    # ---- inputs: EGU records via the document-declared FF10 reader options --
-    log("reading EGU emissions (EarthSciIO ff10: member_glob + skip_header_row) ...")
+    # ---- providers FROM THE DOCUMENT — ALL of them ---------------------------
+    # Including the FF10 table: the loader declares its own reader options, code
+    # map, record filter and extent, so there is nothing left here to read, map,
+    # filter or count.
+    log("building providers from the document ...")
     t = time.time()
-    lon, lat, ann, code = read_egu(doc["data_loaders"]["EGU_Emis"], firstn)
-    n_rec = len(lon)
-    t_egu = time.time() - t
-    log(f"  N_REC = {n_rec}  in {t_egu:.1f} s")
-
-    # ---- providers FROM THE DOCUMENT ----------------------------------------
     sr_meta = doc["data_loaders"]["ISRM_SR"]["metadata"]["x_esd"]
     sr_arrays = [
         a
@@ -184,47 +176,31 @@ def main() -> int:
         doc["data_loaders"]["ISRM_SR"]["source"]["url_template"],
         sr_arrays,
     )
-    log("building providers from the document (ISRM_SR) ...")
+    # A local copy of a record loader's source is a LOCALITY choice of this run
+    # (gaftp.epa.gov is slow and flaky), so it is a url_override rather than an
+    # edit to the document.
+    url_overrides: dict[str, str] = {}
+    if os.path.isfile(paths.EGU_ZIP):
+        mirror = "file://" + os.path.abspath(paths.EGU_ZIP)
+        url_overrides = {name: mirror for name in record_loaders(doc)}
+        log(f"  record source mirrored from {paths.EGU_ZIP}")
     providers = providers_from_document(
-        doc, cache_root=paths.ESIO_CACHE, loaders=["ISRM_SR"]
+        doc, cache_root=paths.ESIO_CACHE, url_overrides=url_overrides
     )
     log(f"  providers: {sorted(providers)}")
+    t_providers = time.time() - t
 
-    # ---- src-cell rectangles: the [0:N_SRC] prefix of the full grid ---------
-    # The document declares src_W/src_S/src_E/src_N ([src_cells]) alongside the
-    # full-grid W/S/E/N ([pop_cells]); the loader note pins the prefix
-    # relationship. Slicing is input plumbing, not model math.
-    log("materializing grid prefix (src_W/S/E/N) ...")
-    t = time.time()
-    ca: dict[str, np.ndarray] = {
-        f"src_{k}": np.asarray(
-            _provider_sample_field(providers[f"ISRM_SR.{k}"], 0.0), dtype=float
-        )[:N_SRC]
-        for k in ("W", "S", "E", "N")
-    }
-    t_grid = time.time() - t
-    log(f"  grid prefix in {t_grid:.1f} s")
-
-    # ---- const arrays: the EGU loader's variables, src rects ----------------
-    ca["EGU_Emis.lon"] = lon
-    ca["EGU_Emis.lat"] = lat
-    ca["EGU_Emis.annual"] = ann
-    ca["EGU_Emis.pollutant"] = code
-    for v in ("stkhgt", "stkdiam", "stktemp", "stkvel"):
-        ca[f"EGU_Emis.{v}"] = np.zeros(n_rec)  # declared, unused downstream
-
-    # ---- PREPARE (rewrite → VI → gated SR fetch → observed-graph hoist) -----
-    log(f"prepare(pushdown_rewrite=True) — N_REC={n_rec} ...")
+    # ---- PREPARE (extent → rewrite → VI → gated fetch → observed-graph) -----
+    log("prepare(pushdown_rewrite=True) — N_REC discovered by the loader ...")
     insp = BuildInspection()
     t = time.time()
     prep = prepare(
         doc,
         providers=providers,
-        const_arrays=ca,
         inspect=insp,
-        metaparameters={"N_REC": n_rec},
         pushdown_rewrite=True,
     )
+    n_rec = int(np.asarray(observed_field(prep, "X")).size)
     t_prep = time.time() - t
     log(
         f"PREPARE done in {t_prep:.1f} s  (peak RSS so far: "
@@ -237,7 +213,8 @@ def main() -> int:
         raise RuntimeError("no pd_member_factor__* const array — did the rewrite fire?")
     members = sorted(int(m) for m in np.asarray(insp.const_arrays[mf_keys[0]]))
     n_ppl = len(members)
-    log(f"engine-derived support set: |members| = {n_ppl} of {N_SRC} source cells")
+    n_src, n_rcv = metaparam(doc, "N_SRC"), metaparam(doc, "N_RCV")
+    log(f"engine-derived support set: |members| = {n_ppl} of {n_src} source cells")
     if not reduced and n_ppl != 1520:
         log("  WARNING: expected 1520 emission-bearing cells at full scale")
 
@@ -287,8 +264,8 @@ def main() -> int:
         ),
         model=paths.MODEL,
         mode="runtime_observed_graph",
-        n_src=N_SRC,
-        n_rcv=N_SRC,
+        n_src=n_src,
+        n_rcv=n_rcv,
         n_rec=n_rec,
         ppl=members,
         pathways=pathways,
@@ -297,8 +274,7 @@ def main() -> int:
         deathsL=dL.tolist(),
         timing={
             "wall_seconds": time.time() - T0,
-            "egu_seconds": t_egu,
-            "grid_seconds": t_grid,
+            "providers_seconds": t_providers,
             "prepare_seconds": t_prep,
             "peak_rss_bytes": peak_rss_bytes(),
         },

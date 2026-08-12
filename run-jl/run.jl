@@ -1,20 +1,23 @@
 #!/usr/bin/env julia
 # =============================================================================
 # run.jl — the JULIA binding drives the single clean `isrm.esm` end to end
-# through the PUBLIC EarthSciAST surface.
+# through the PUBLIC EarthSciAST surface. NOTHING MODEL-SHAPED LIVES HERE: this
+# file names no pollutant, no column, no grid extent and no record count.
 #
-#   * `prepare(file; providers, const_arrays, pushdown_rewrite=true)` — the
-#     automatic projection-pushdown rewrite runs inside the engine; the SR
-#     provider gates are derived from the rewrite's own record
+#   * `prepare(doc; providers, pushdown_rewrite=true)` — the automatic
+#     projection-pushdown rewrite runs inside the engine; the SR provider gates
+#     are derived from the rewrite's own record
 #     (`metadata.x_esd.pushdown.gated_select`), so this file hand-authors NO
 #     gate dict and implements NO provider protocol;
-#   * the SR / grid / pop / mortality providers come FROM THE DOCUMENT
-#     (`providers_from_document`: format = `metadata.esio_format`, URL =
-#     `source.url_template`);
-#   * the EGU FF10 records are read through EarthSciIO's OWN ff10 reader with
-#     the document-declared container options (`metadata.x_esd`: the zip
-#     `member_filter` glob and `skip_header_row`) — no hand unzip, no hand
-#     header-strip; the POLID→code map is the document's `pollutant_codes`;
+#   * EVERY provider comes FROM THE DOCUMENT (`providers_from_document`:
+#     format = `metadata.esio_format`, URL = `source.url_template`) — the SR
+#     slabs, the grid, the population, AND the EGU FF10 table, whose ingest the
+#     loader now declares in full (esm-spec §8.9): `reader_options` (the zip
+#     member glob + header row), `codes` (POLID text -> the pathway enum, an
+#     unrecognised code dropping the record), `record_filter` (no coordinate /
+#     no annual total is not a record) and `extent` (the surviving count binds
+#     N_REC). The src-cell rectangles are the `select` range `W[0:N_SRC]` on
+#     their own loader variables;
 #   * every reported number is the binding's evaluation of the document's
 #     observed graph (`observed_field`) — NO hand-written STEP-0 math here.
 #
@@ -37,64 +40,51 @@ include(joinpath(@__DIR__, "paths.jl"))
 include(joinpath(@__DIR__, "..", "contract", "results.jl"))
 
 const T0 = time()
-const N_SRC = 52411             # metaparameter default; SR source/receptor cells
 const ORACLE_K = 7524.918845602511
 const ORACLE_L = 16979.632171487083
-peak_rss_bytes() = parse(Int, split(read("/proc/self/statm", String))[2]) * 4096
+# Peak resident set. `/proc/self/statm` field 2 is the CURRENT resident page
+# count and is Linux-only; `Sys.maxrss()` is the high-water mark and is portable,
+# so it is the fallback wherever /proc does not exist (macOS).
+peak_rss_bytes() = isfile("/proc/self/statm") ?
+    parse(Int, split(read("/proc/self/statm", String))[2]) * 4096 : Int(Sys.maxrss())
 
-# =============================================================================
-# EGU FF10 ingest — through EarthSciIO's ff10 reader, options FROM THE DOCUMENT.
-#
-# The document's EGU_Emis loader declares the zip container (`x_esd.container`),
-# the member glob (`x_esd.member_filter`, "*egu*"), the EPA column-header quirk
-# (`x_esd.skip_header_row`), and the POLID→pathway-code integer map
-# (`x_esd.pollutant_codes`) the is_* observeds compare against. This function
-# contributes input PLUMBING only: read the table, map the codes, drop the
-# unrecognised/non-finite records (per the document's note), truncate for a
-# reduced run. The reader concatenates members in sorted (lexicographic) order —
-# identical to the zip order for this archive, so ISRM_FIRSTN selects the same
-# records as every previous runner. Everything DOWNSTREAM of these raw arrays —
-# projection, spatial join, support-set invention, binning, contraction,
-# deaths — is the engine evaluating the document.
-# =============================================================================
+"""A metaparameter's declared default, read from the document (so no grid
+extent is written down here)."""
+metaparam(doc, name) = Int(get(get(get(doc, "metaparameters", Dict()), name, Dict()),
+                               "default", 0))
 
-"""The EGU zip to read: `\$EGU_ZIP` (default `<repo>/data/…`) when present,
-otherwise the document's `source.url_template` fetched once through the
-EarthSciIO cache (content-addressed under `cache_root`)."""
-function resolve_egu_zip(egu_meta, cache_root)
-    isfile(EGU_ZIP) && return EGU_ZIP
-    url = String(egu_meta["source"]["url_template"])
-    println("  EGU zip not found at $EGU_ZIP — fetching $url via the EarthSciIO cache ...")
-    flush(stdout)
-    entry = EarthSciIO.fetch_blob(EarthSciIO.Cache(; root=joinpath(cache_root, "EGU_Emis")),
-                                  url; source_loader="EGU_Emis")
-    return entry.path
+"""The loaders that DISCOVER their own extent (`extent.metaparameter`) — the
+record-bearing tables of the document, whatever they happen to be called. The
+two knobs below are scale/locality concerns of a RUN, not of the model, and both
+are expressed in the document's own vocabulary."""
+record_loaders(doc) = String[String(name) for (name, ld) in get(doc, "data_loaders", Dict())
+                             if ld isa AbstractDict &&
+                                get(ld, "extent", Dict()) isa AbstractDict &&
+                                haskey(get(ld, "extent", Dict()), "metaparameter")]
+
+"""The record count the loaders DISCOVERED — the delivered length of any one of
+an extent-declaring loader's variables. They are aligned by construction (that
+is exactly what `record_filter` guarantees), so the first one answers for all,
+and this file still names no column of any particular model."""
+function discovered_records(doc, insp)
+    for name in record_loaders(doc), v in keys(doc["data_loaders"][name]["variables"])
+        a = get(insp.const_arrays, "$name.$v", nothing)
+        a === nothing || return length(a)
+    end
+    error("no record-discovering loader delivered an array to size N_REC from")
 end
 
-"""Raw EGU emission-record arrays (lon, lat, annual, pathway code), recognised
-+ finite records only — the filter the document's note declares."""
-function read_egu(egu_meta, zippath; firstn=nothing)
-    xe = egu_meta["metadata"]["x_esd"]
-    nds = EarthSciIO.read_native(EarthSciIO.FF10Reader(), zippath;
-        member_glob = String(xe["member_filter"]),
-        skip_header_row = Bool(get(xe, "skip_header_row", false)),
-        variables = ["POLID", "ANN_VALUE", "LONGITUDE", "LATITUDE"])
-    codes = Dict{String,Float64}(uppercase(String(k)) => Float64(v)
-                                 for (k, v) in xe["pollutant_codes"])
-    code = Float64[get(codes, uppercase(strip(String(p))), 0.0) for p in nds["POLID"].data]
-    ann  = Float64.(nds["ANN_VALUE"].data)
-    lon  = Float64.(nds["LONGITUDE"].data)
-    lat  = Float64.(nds["LATITUDE"].data)
-    n_all = length(code)
-    keep = [code[i] > 0.0 && isfinite(lon[i]) && isfinite(lat[i]) && isfinite(ann[i])
-            for i in 1:n_all]
-    lon = lon[keep]; lat = lat[keep]; ann = ann[keep]; code = code[keep]
-    println("  EGU FF10 records: $n_all read, $(length(lon)) recognised-pathway kept")
-    if firstn !== nothing
-        n = min(firstn, length(lon))
-        lon = lon[1:n]; lat = lat[1:n]; ann = ann[1:n]; code = code[1:n]
+"""REDUCED runs: truncate every record-discovering loader to its first `n`
+DELIVERED records with a loader-level `select` range (esm-spec §8.9.2). Because
+the selection follows the loader's own `record_filter`, this picks the same
+records the previous runners' post-filter truncation did — and `extent` then
+re-discovers the smaller N_REC by itself."""
+function truncate_records!(doc, n)
+    for name in record_loaders(doc)
+        doc["data_loaders"][name]["select"] =
+            Dict("axes" => [Dict("range" => Dict("start" => 0, "stop" => n))])
     end
-    return lon, lat, ann, code
+    return doc
 end
 
 # zarr workaround (unchanged from the validated runners): the SR arrays carry NO
@@ -125,53 +115,39 @@ function main()
 
     doc_raw = JSON.parsefile(MODEL)
     cache_root = joinpath(SCRATCH, "run-jl-esio-cache")
+    reduced && truncate_records!(doc_raw, firstn)
 
-    # ---- inputs: EGU records via the document-declared FF10 reader options --
-    println("reading EGU emissions (EarthSciIO ff10: member_glob + skip_header_row) ...")
-    flush(stdout)
-    egu_meta = doc_raw["data_loaders"]["EGU_Emis"]
-    lon, lat, ann, code = read_egu(egu_meta, resolve_egu_zip(egu_meta, cache_root);
-                                   firstn=firstn)
-    N_REC = length(lon)
-    println("  N_REC = $N_REC"); flush(stdout)
-
-    # ---- providers FROM THE DOCUMENT ----------------------------------------
+    # ---- providers FROM THE DOCUMENT — ALL of them --------------------------
+    # Including the FF10 table: the loader declares its own reader options, code
+    # map, record filter and extent, so there is nothing left here to read, map,
+    # filter or count.
     sr_arrays = String[a for a in keys(doc_raw["data_loaders"]["ISRM_SR"]["metadata"]["x_esd"]["arrays"])
                        if !(a in ("TotalPop", "MortalityRate", "W", "S", "E", "N"))]
     seed_empty_zattrs(joinpath(cache_root, "ISRM_SR"),
                       doc_raw["data_loaders"]["ISRM_SR"]["source"]["url_template"], sr_arrays)
-    println("building providers from the document (ISRM_SR) ...")
-    providers = EA.providers_from_document(doc_raw; cache_root=cache_root,
-                                           loaders=["ISRM_SR"])
+    println("building providers from the document ...")
+    # A local copy of a record loader's source is a LOCALITY choice of this run
+    # (gaftp.epa.gov is slow and flaky), so it is a url_override rather than an
+    # edit to the document.
+    url_overrides = Dict{String,String}()
+    if isfile(EGU_ZIP)
+        for name in record_loaders(doc_raw)
+            url_overrides[name] = "file://" * EGU_ZIP
+        end
+        println("  record source mirrored from $EGU_ZIP")
+    end
+    t_providers = @elapsed providers =
+        EA.providers_from_document(doc_raw; cache_root=cache_root,
+                                   url_overrides=url_overrides)
     println("  providers: ", sort(collect(keys(providers)))); flush(stdout)
 
-    # ---- src-cell rectangles: the [1:N_SRC] prefix of the full grid ---------
-    # The document declares src_W/src_S/src_E/src_N ([src_cells]) alongside the
-    # full-grid W/S/E/N ([pop_cells]); the loader note pins the prefix
-    # relationship ("the first 52411 build the cell rectangles"). Slicing is
-    # input plumbing, not model math.
-    println("materializing grid prefix (src_W/S/E/N) ..."); flush(stdout)
-    t_grid = @elapsed src_rects = Dict{String,Any}(
-        "src_$k" => Float64.(EA.provider_sample(providers["ISRM_SR.$k"], 0.0)[1:N_SRC])
-        for k in ("W", "S", "E", "N"))
-    println("  grid prefix in $(round(t_grid, digits=1)) s"); flush(stdout)
-
-    # ---- const arrays: the EGU loader's variables, src rects ----------------
-    ca = Dict{String,Any}(src_rects)
-    ca["EGU_Emis.lon"] = lon;  ca["EGU_Emis.lat"] = lat
-    ca["EGU_Emis.annual"] = ann; ca["EGU_Emis.pollutant"] = code
-    for v in ("stkhgt", "stkdiam", "stktemp", "stkvel")
-        ca["EGU_Emis.$v"] = zeros(N_REC)     # declared, unused downstream
-    end
-
-    # ---- load + PREPARE (rewrite + record-derived gating inside the engine) --
-    println("loading document (N_REC=$N_REC) ..."); flush(stdout)
-    file = EA.load(MODEL; metaparameters=Dict("N_REC" => N_REC))
-    insp = EA.BuildInspection()
-    println("prepare(pushdown_rewrite=true) — rewrite → VI → gated SR fetch → build ...")
+    # ---- PREPARE (extent → rewrite → coords → VI → gated fetch → graph) ------
+    println("prepare(pushdown_rewrite=true) — N_REC discovered by the loader ...")
     flush(stdout)
-    t_prep = @elapsed prep = EA.prepare(file; providers=providers, const_arrays=ca,
+    insp = EA.BuildInspection()
+    t_prep = @elapsed prep = EA.prepare(doc_raw; providers=providers, base_path=ISRM_DIR,
                                         inspect=insp, pushdown_rewrite=true)
+    N_REC = discovered_records(doc_raw, insp)
     println("PREPARE done in $(round(t_prep, digits=1)) s  (peak RSS so far: ",
             round(peak_rss_bytes() / 2^30, digits=2), " GiB)"); flush(stdout)
 
@@ -180,7 +156,9 @@ function main()
     isempty(mf_keys) && error("no pd_member_factor__* const array — did the rewrite fire?")
     members = sort!(Int.(insp.const_arrays[first(mf_keys)]))
     n_ppl = length(members)
-    println("engine-derived support set: |members| = $n_ppl of $N_SRC source cells")
+    n_src = metaparam(doc_raw, "N_SRC")
+    n_rcv = metaparam(doc_raw, "N_RCV")
+    println("engine-derived support set: |members| = $n_ppl of $n_src source cells")
     !reduced && n_ppl != 1520 &&
         println("  WARNING: expected 1520 emission-bearing cells at full scale")
 
@@ -230,11 +208,12 @@ function main()
     write_results(out;
         binding_version = "julia $(VERSION) / EarthSciAST $(pkgversion(EarthSciAST))",
         model = MODEL, mode = "runtime_observed_graph",
-        n_src = N_SRC, n_rcv = N_SRC, n_rec = N_REC,
+        n_src = n_src, n_rcv = n_rcv, n_rec = N_REC,
         ppl = members,
         pathways = pathways,
         total_pm25 = tp, deathsK = dK, deathsL = dL,
         timing = Dict("wall_seconds" => time() - T0,
+                      "providers_seconds" => t_providers,
                       "build_seconds" => t_prep,
                       "eval_seconds" => t_eval,
                       "peak_rss_bytes" => peak_rss_bytes()))

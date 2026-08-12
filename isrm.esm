@@ -47,10 +47,10 @@
    },
    "format_gaps": {
     "G1": "0.8.0 source schema has no `format` field / no .zarray pinning; recorded in loader x_esd.",
-    "G2": "No lazy source-dim selection in-format. PUSHDOWN DRAFT: the runner-mediated SR[layer0, ppl, :] lazy_select is replaced by data_loaders.ISRM_SR.gated_select gating the SR source axis by the DERIVED set emis_src_cells (Phase-2-core gated-provider deferral; see metadata.x_esd.phase2_pushdown_DRAFT).",
-    "G3": "No FF10/zip semantics in-format; member filter + column map recorded in EGU_Emis x_esd, pollutant->pathway map expressed as enum/ifelse observeds.",
+    "G2": "No lazy source-dim selection in-format. PUSHDOWN DRAFT: the runner-mediated SR[layer0, ppl, :] lazy_select is replaced by data_loaders.ISRM_SR.gated_select gating the SR source axis by the DERIVED set emis_src_cells (Phase-2-core gated-provider deferral; see metadata.x_esd.phase2_pushdown_DRAFT). The sibling half \u2014 the src-cell rectangles as the [0:N_SRC] prefix of the full grid \u2014 is CLOSED by the `range` axis of the same per-axis vocabulary (esm-spec 8.9.2): src_W/src_S/src_E/src_N are declared `select` ranges over the SAME on-disk arrays as W/S/E/N.",
+    "G3": "CLOSED (esm-spec 8.9). FF10/zip semantics ARE expressible now: EGU_Emis declares `reader_options` (the *egu* member glob + the asserted header row), a `codes` map on `pollutant` (POLID text -> the pathway enum, an unrecognised code DROPS the record) and a `record_filter` (a record with no coordinate or no annual total is not a record). The runner no longer reads, maps or filters this table.",
     "G5": "No polygon/choropleth plot type; best available is a centroid scatter (see examples).",
-    "G6": "N_REC is a runtime-discovered metaparameter (default 0). PUSHDOWN DRAFT: N_PPL is GONE \u2014 emis_src_cells is now a derived index set whose extent is materialised from the emis_src_cells_faq producer (value-invention), not a runtime-discovered metaparameter."
+    "G6": "CLOSED (esm-spec 8.9.4). N_REC is still runtime-discovered (default 0), but the LOADER discovers it: EGU_Emis declares `extent: {metaparameter: N_REC}`, so prepare() samples it before it closes metaparameters and the surviving record count sizes emis_records. No caller counts rows. PUSHDOWN DRAFT: N_PPL is GONE \u2014 emis_src_cells is a derived index set whose extent is materialised from the emis_src_cells_faq producer (value-invention)."
    }
   }
  },
@@ -286,7 +286,7 @@
        "PrimaryPM25"
       ]
      },
-     "note": "`format` and the pinned .zarray params are not expressible in the 0.8.0 source schema (G1); the runner sets format at provider creation. PUSHDOWN DRAFT: the SR source-axis slice is no longer the runner-threaded `ppl` lazy_select but the gated_select above, gated by the DERIVED emis_src_cells set the value-invention producer emis_src_cells_faq materialises (G2; Phase-2-core gated-provider deferral). W/S/E/N/TotalPop/MortalityRate are read fully; the first 52411 (the [0:52411] prefix slice) are the SR receptor/source cells. NOTE: for the pushdown, W/S/E/N (full-grid cell rectangles) must also be available to value-invention as build-time const factors (the producer's rectangle filter reads index(W,c)..index(N,c) over the full source grid)."
+     "note": "`format` and the pinned .zarray params are not expressible in the 0.8.0 source schema (G1); the runner sets format at provider creation. PUSHDOWN DRAFT: the SR source-axis slice is no longer the runner-threaded `ppl` lazy_select but the gated_select above, gated by the DERIVED emis_src_cells set the value-invention producer emis_src_cells_faq materialises (G2; Phase-2-core gated-provider deferral). W/S/E/N/TotalPop/MortalityRate are read fully (value-invention's rectangle filter reads the FULL grid); the first 52411 are the SR receptor/source cells, and that prefix is now DECLARED as the src_W/src_S/src_E/src_N variables' `select` range rather than sliced by the caller. NOTE: for the pushdown, W/S/E/N (full-grid cell rectangles) must also be available to value-invention as build-time const factors (the producer's rectangle filter reads index(W,c)..index(N,c) over the full source grid)."
     }
    },
    "variables": {
@@ -344,6 +344,66 @@
      "file_variable": "MortalityRate",
      "units": "1",
      "description": "Baseline all-cause mortality per 100,000; length 596444, prefix [0:52411] used."
+    },
+    "src_W": {
+     "file_variable": "W",
+     "units": "m",
+     "select": {
+      "axes": [
+       {
+        "range": {
+         "start": 0,
+         "stop": "N_SRC"
+        }
+       }
+      ]
+     },
+     "description": "Cell west edge over the SOURCE cells: the SAME on-disk array as `W`, delivered as its [0:N_SRC] prefix. Declared, so no caller samples the grid a second time to slice it (esm-spec 8.9.2)."
+    },
+    "src_S": {
+     "file_variable": "S",
+     "units": "m",
+     "select": {
+      "axes": [
+       {
+        "range": {
+         "start": 0,
+         "stop": "N_SRC"
+        }
+       }
+      ]
+     },
+     "description": "Cell south edge over the SOURCE cells: the SAME on-disk array as `S`, delivered as its [0:N_SRC] prefix. Declared, so no caller samples the grid a second time to slice it (esm-spec 8.9.2)."
+    },
+    "src_E": {
+     "file_variable": "E",
+     "units": "m",
+     "select": {
+      "axes": [
+       {
+        "range": {
+         "start": 0,
+         "stop": "N_SRC"
+        }
+       }
+      ]
+     },
+     "description": "Cell east edge over the SOURCE cells: the SAME on-disk array as `E`, delivered as its [0:N_SRC] prefix. Declared, so no caller samples the grid a second time to slice it (esm-spec 8.9.2)."
+    },
+    "src_N": {
+     "file_variable": "N",
+     "units": "m",
+     "select": {
+      "axes": [
+       {
+        "range": {
+         "start": 0,
+         "stop": "N_SRC"
+        }
+       }
+      ]
+     },
+     "description": "Cell north edge over the SOURCE cells: the SAME on-disk array as `N`, delivered as its [0:N_SRC] prefix. Declared, so no caller samples the grid a second time to slice it (esm-spec 8.9.2)."
     }
    }
   },
@@ -380,7 +440,7 @@
       "lon": 23,
       "lat": 24
      },
-     "pollutant_encoding": "The FF10 col-12 string code is delivered as the integer in `pollutant_codes` by the runner ff10 reader; the is_VOC/is_NOx/is_NH3/is_SOx/is_PM25 membership observeds compare `pollutant` against these integers (STEP 0.6 pollutant->pathway map).",
+     "pollutant_encoding": "Historical: the col-12 POLID string is now mapped by the loader variable's own `codes` map (esm-spec 8.9.1); `pollutant_codes` below is retained as the human-readable provenance of that map. The is_VOC/is_NOx/is_NH3/is_SOx/is_PM25 membership observeds compare `pollutant` against these integers (STEP 0.6 pollutant->pathway map).",
      "pollutant_codes": {
       "VOC": 1,
       "VOC_INV": 2,
@@ -442,22 +502,101 @@
       "PSO4": 58,
       "PTI": 59
      },
-     "note": "format=ff10, the zip container, the *egu* member filter, and the numbered column map are not expressible in the 0.8.0 source schema (G3); the runner selects egu members and parses the columns. Records whose pollutant maps to no pathway are skipped by the runner."
+     "note": "format=ff10, the zip container, the *egu* member filter and the numbered column map are the FF10 point schema's own; the loader now DECLARES its ingest (esm-spec 8.9): `reader_options` carries the member glob + header row, `codes` maps POLID to the pollutant enum with unrecognised codes dropping the record, `record_filter` drops a record with no coordinate or no annual total, and `extent` binds the surviving count to N_REC. G3 and G6 are CLOSED: no caller reads this table, maps its codes, filters its rows or counts them."
     }
+   },
+   "reader_options": {
+    "member_glob": "*egu*",
+    "skip_header_row": true
+   },
+   "record_filter": {
+    "require_finite": [
+     "lon",
+     "lat",
+     "annual"
+    ]
+   },
+   "extent": {
+    "metaparameter": "N_REC"
    },
    "variables": {
     "pollutant": {
-     "file_variable": "poll",
+     "file_variable": "POLID",
      "units": "1",
-     "description": "FF10 pollutant code (col 12), delivered as the `pollutant` enum integer (see x_esd)."
+     "codes": {
+      "map": {
+       "VOC": 1,
+       "VOC_INV": 2,
+       "XYL": 3,
+       "TOL": 4,
+       "TERP": 5,
+       "PAR": 6,
+       "OLE": 7,
+       "NVOL": 8,
+       "MEOH": 9,
+       "ISOP": 10,
+       "IOLE": 11,
+       "FORM": 12,
+       "ETOH": 13,
+       "ETHA": 14,
+       "ETH": 15,
+       "ALD2": 16,
+       "ALDX": 17,
+       "CB05_ALD2": 18,
+       "CB05_ALDX": 19,
+       "CB05_BENZENE": 20,
+       "CB05_ETH": 21,
+       "CB05_ETHA": 22,
+       "CB05_ETOH": 23,
+       "CB05_FORM": 24,
+       "CB05_IOLE": 25,
+       "CB05_ISOP": 26,
+       "CB05_MEOH": 27,
+       "CB05_OLE": 28,
+       "CB05_PAR": 29,
+       "CB05_TERP": 30,
+       "CB05_TOL": 31,
+       "CB05_XYL": 32,
+       "ETHANOL": 33,
+       "NHTOG": 34,
+       "NMOG": 35,
+       "NOX": 36,
+       "HONO": 37,
+       "NO": 38,
+       "NO2": 39,
+       "NH3": 40,
+       "SO2": 41,
+       "PM25-PRI": 42,
+       "PM2_5": 43,
+       "DIESEL-PM25": 44,
+       "PAL": 45,
+       "PCA": 46,
+       "PCL": 47,
+       "PEC": 48,
+       "PFE": 49,
+       "PK": 50,
+       "PMG": 51,
+       "PMN": 52,
+       "PMOTHR": 53,
+       "PNH4": 54,
+       "PNO3": 55,
+       "POC": 56,
+       "PSI": 57,
+       "PSO4": 58,
+       "PTI": 59
+      },
+      "case_insensitive": true,
+      "unmapped": "drop"
+     },
+     "description": "FF10 pollutant code (col 12, POLID), delivered as the `pollutant` enum integer by the loader's own `codes` map. A code outside the map is a pathway this model does not carry, so the record is dropped (record_filter semantics), which is exactly what the runner used to do by hand."
     },
     "annual": {
-     "file_variable": "ann_value",
+     "file_variable": "ANN_VALUE",
      "units": "kg/yr",
      "description": "Annual emissions (col 13)."
     },
     "stkhgt": {
-     "file_variable": "stkhgt",
+     "file_variable": "STKHGT",
      "units": "m",
      "unit_conversion": {
       "op": "*",
@@ -469,7 +608,7 @@
      "description": "Stack height (col 17), ft->m. Collected for fidelity; NOT consumed (emisLayer hard-coded to 0)."
     },
     "stkdiam": {
-     "file_variable": "stkdiam",
+     "file_variable": "STKDIAM",
      "units": "m",
      "unit_conversion": {
       "op": "*",
@@ -481,7 +620,7 @@
      "description": "Stack diameter (col 18), ft->m. Fidelity only; unused downstream."
     },
     "stktemp": {
-     "file_variable": "stktemp",
+     "file_variable": "STKTEMP",
      "units": "K",
      "unit_conversion": {
       "op": "+",
@@ -505,7 +644,7 @@
      "description": "Stack temperature (col 19), degF->K (F-32)*5/9+273.15. Fidelity only; unused downstream."
     },
     "stkvel": {
-     "file_variable": "stkvel",
+     "file_variable": "STKVEL",
      "units": "m/s",
      "unit_conversion": {
       "op": "*",
@@ -517,12 +656,12 @@
      "description": "Stack velocity (col 21), ft/s->m/s. Fidelity only; unused downstream."
     },
     "lon": {
-     "file_variable": "lon",
+     "file_variable": "LONGITUDE",
      "units": "degree",
      "description": "Longitude (col 23), EPSG:4269 treated as +proj=longlat."
     },
     "lat": {
-     "file_variable": "lat",
+     "file_variable": "LATITUDE",
      "units": "degree",
      "description": "Latitude (col 24), EPSG:4269 treated as +proj=longlat."
     }
@@ -4808,6 +4947,30 @@
    "type": "variable_map",
    "from": "ISRM_SR.MortalityRate",
    "to": "ISRM.MortalityRate",
+   "transform": "param_to_var"
+  },
+  {
+   "type": "variable_map",
+   "from": "ISRM_SR.src_W",
+   "to": "ISRM.src_W",
+   "transform": "param_to_var"
+  },
+  {
+   "type": "variable_map",
+   "from": "ISRM_SR.src_S",
+   "to": "ISRM.src_S",
+   "transform": "param_to_var"
+  },
+  {
+   "type": "variable_map",
+   "from": "ISRM_SR.src_E",
+   "to": "ISRM.src_E",
+   "transform": "param_to_var"
+  },
+  {
+   "type": "variable_map",
+   "from": "ISRM_SR.src_N",
+   "to": "ISRM.src_N",
    "transform": "param_to_var"
   },
   {

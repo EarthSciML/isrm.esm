@@ -24,14 +24,28 @@ The document is fully automatic — nothing model-shaped lives in the runners:
 * **Document-declared data sources.** Every provider — the SR zarr, grid,
   population, mortality, and the EGU FF10 inventory — comes from the
   document's `data_loaders` via `providers_from_document` (format =
-  `metadata.esio_format`, URL = `source.url_template`). The FF10-in-zip
-  quirks are declared too: the `*egu*` member glob (`x_esd.member_filter`)
-  and the EPA column-header row (`x_esd.skip_header_row`) are reader options
-  EarthSciIO implements in all three languages, and the POLID→pathway map is
-  the document's `x_esd.pollutant_codes`.
+  `metadata.esio_format`, URL = `source.url_template`).
+* **Document-declared ingest** (esm-spec §8.9; the Rust binding today, see the
+  binding note below). The EGU loader carries its own `reader_options` (the
+  `*egu*` member glob and the EPA column-header row), a `codes` map turning the
+  POLID text column into the pathway enum, a `record_filter` that drops a
+  record with no coordinate or no annual total, and an `extent` that binds the
+  surviving count to `N_REC`. The source-cell rectangles are a `select` range —
+  `W[0:N_SRC]` on their own loader variables — rather than a prefix the caller
+  slices. The FF10 table is read, mapped, filtered, counted and (for a reduced
+  run) truncated **by the engine**, from the declaration: `run-rs` names no
+  pollutant, no column, no grid extent and no record count.
 
-Each shim contributes input plumbing and orchestration only; every reported
-number is the binding's evaluation of the document's observed graph.
+Each shim contributes orchestration only; every reported number is the
+binding's evaluation of the document's observed graph.
+
+> **Binding note.** The §8.9 ingest fields are consumed by **all three**
+> bindings' `providers_from_document` + `prepare`, and all three shims dropped
+> their `read_egu` in this change. Each was checked the same way: the record a
+> binding emits with the imperative ingest deleted, against the one it emitted
+> with it, and against the other bindings'. `ppl` matches exactly — count and
+> sha256 — the totals are bit-identical within a binding, and the bindings
+> agree with each other to 5.1e-15.
 
 ## The result
 

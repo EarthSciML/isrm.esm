@@ -1,19 +1,22 @@
 // =============================================================================
-// run-rs — Phase 4 (clean consolidation): the RUST binding drives the single
-// clean `isrm.esm` end to end through the PUBLIC earthsci_ast surface.
+// run-rs — the RUST binding drives the single clean `isrm.esm` end to end
+// through the PUBLIC earthsci_ast surface. NOTHING MODEL-SHAPED LIVES HERE:
+// this file names no pollutant, no column, no grid extent and no record count.
 //
-//   * `prepare(doc, ca, providers, pushdown_rewrite: true)` — the automatic
+//   * `prepare(doc, {}, providers, pushdown_rewrite: true)` — the automatic
 //     projection-pushdown rewrite runs inside the engine; the SR provider
 //     gates derive from the rewrite's own record
 //     (`metadata.x_esd.pushdown.gated_select`), so this file hand-authors NO
 //     gate and hand-builds NO `Selection`;
-//   * the SR / grid / pop / mortality providers come FROM THE DOCUMENT
-//     (`providers_from_document`: format = `metadata.esio_format`, URL =
-//     `source.url_template`);
-//   * the EGU FF10 records are read through EarthSciIO's OWN ff10 reader with
-//     the document-declared container options (`metadata.x_esd`: the zip
-//     `member_filter` glob and `skip_header_row`) — no hand unzip, no hand
-//     header-strip; the POLID→code map is the document's `pollutant_codes`;
+//   * EVERY provider comes FROM THE DOCUMENT (`providers_from_document`:
+//     format = `metadata.esio_format`, URL = `source.url_template`) — the SR
+//     slabs, the grid, the population, AND the EGU FF10 table, whose ingest
+//     the loader now declares in full (esm-spec §8.9): `reader_options` (the
+//     zip member glob + header row), `codes` (POLID text -> the pathway enum,
+//     an unrecognised code dropping the record), `record_filter` (no
+//     coordinate / no annual total is not a record) and `extent` (the
+//     surviving count binds N_REC). The src-cell rectangles are the
+//     `select` range `W[0:N_SRC]` on their own loader variables;
 //   * every reported number is the binding's evaluation of the document's
 //     observed graph (`observed_field`) — NO hand-written STEP-0 math here,
 //     and NO hand LCC projection (raw emis_lon/emis_lat are the parameters;
@@ -34,9 +37,7 @@ use std::time::Instant;
 
 use earthsci_ast::esio_provider::providers_from_document;
 use earthsci_ast::prepare::{PrepareOptions, PrepareProvider, prepare};
-use earthsciio::format::{ArrayData, Ff10Reader, Reader, Selection};
-use ndarray::{ArrayD, IxDyn};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 /// zarr array name -> (emissions observed, concentration observed)
 const PW_OBS: [(&str, &str, &str); 5] = [
@@ -47,7 +48,6 @@ const PW_OBS: [(&str, &str, &str); 5] = [
     ("PrimaryPM25", "E_PM25", "conc_PrimaryPM25"),
 ];
 
-const N_SRC: usize = 52411; // metaparameter default; SR source/receptor cells
 const ORACLE_K: f64 = 7524.918845602511;
 const ORACLE_L: f64 = 16979.632171487083;
 
@@ -73,103 +73,38 @@ fn peak_rss_bytes() -> u64 {
         .unwrap_or(0)
 }
 
-fn as_f64_vec(d: &ArrayData) -> Vec<f64> {
-    match d {
-        ArrayData::F64(v) => v.clone(),
-        ArrayData::I64(v) => v.iter().map(|&x| x as f64).collect(),
-        ArrayData::I32(v) => v.iter().map(|&x| x as f64).collect(),
-        ArrayData::Bool(v) => v.iter().map(|&x| if x { 1.0 } else { 0.0 }).collect(),
-        ArrayData::Str(_) => Vec::new(),
-    }
+/// A metaparameter's declared default, read from the document (so no grid
+/// extent is written down here).
+fn metaparam(doc: &Value, name: &str) -> usize {
+    doc["metaparameters"][name]["default"].as_u64().unwrap_or(0) as usize
 }
 
-fn arr1(v: Vec<f64>) -> ArrayD<f64> {
-    let n = v.len();
-    ArrayD::from_shape_vec(IxDyn(&[n]), v).expect("1-D shape always matches its own length")
-}
-
-/// EGU FF10 ingest — through EarthSciIO's ff10 reader, options FROM THE
-/// DOCUMENT (`x_esd`: zip `member_filter` glob, `skip_header_row`, the
-/// POLID→pathway-code integer map). Input PLUMBING only: read the table, map
-/// the codes, drop the unrecognised/non-finite records (per the document's
-/// note), truncate for a reduced run. The reader concatenates members in
-/// sorted order — identical to the zip order for this archive, so ISRM_FIRSTN
-/// selects the same records as every previous runner.
-#[allow(clippy::type_complexity)]
-fn read_egu(
-    egu_meta: &Value,
-    firstn: Option<usize>,
-) -> Result<(Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>), String> {
-    let xe = &egu_meta["metadata"]["x_esd"];
-    let mut zip = paths::egu_zip();
-    if !zip.is_file() {
-        // Fall back to the document's declared source, fetched once through
-        // the EarthSciIO cache (content-addressed under the cache root).
-        let url = egu_meta["source"]["url_template"]
-            .as_str()
-            .ok_or("EGU_Emis source.url_template missing")?;
-        println!("  EGU zip not found at {} — fetching {url} via the cache ...", zip.display());
-        let cache = earthsciio::Cache::builder()
-            .data_dir(paths::esio_cache().join("EGU_Emis"))
-            .build()
-            .map_err(|e| format!("EGU cache: {e}"))?;
-        let blob = cache
-            .fetch(&earthsciio::FetchRequest::new(url).loader("EGU_Emis"))
-            .map_err(|e| format!("EGU fetch {url}: {e}"))?;
-        zip = blob.path;
-    }
-    let reader = Ff10Reader::new()
-        .member_glob(xe["member_filter"].as_str().ok_or("EGU_Emis x_esd.member_filter missing")?)
-        .skip_header_row(xe["skip_header_row"].as_bool().unwrap_or(false));
-    let vars: Vec<String> = ["POLID", "ANN_VALUE", "LONGITUDE", "LATITUDE"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    let ds = reader
-        .read_native(&zip, &vars, &Selection::All)
-        .map_err(|e| format!("FF10 decode {zip:?}: {e}"))?;
-    let get = |n: &str| {
-        ds.variables
-            .get(n)
-            .ok_or_else(|| format!("FF10: no {n} column"))
-    };
-    let polid = match &get("POLID")?.data {
-        ArrayData::Str(v) => v.clone(),
-        other => return Err(format!("FF10: POLID decoded as {other:?}, expected strings")),
-    };
-    let ann = as_f64_vec(&get("ANN_VALUE")?.data);
-    let lon = as_f64_vec(&get("LONGITUDE")?.data);
-    let lat = as_f64_vec(&get("LATITUDE")?.data);
-
-    let codes: HashMap<String, f64> = xe["pollutant_codes"]
+/// The loaders that DISCOVER their own extent (`extent.metaparameter`) — the
+/// record-bearing tables of the document, whatever they happen to be called.
+/// The two knobs below are scale/locality concerns of a RUN, not of the model,
+/// and both are expressed in the document's own vocabulary.
+fn record_loaders(doc: &Value) -> Vec<String> {
+    doc["data_loaders"]
         .as_object()
-        .ok_or("EGU_Emis x_esd.pollutant_codes missing")?
-        .iter()
-        .map(|(k, v)| (k.to_uppercase(), v.as_f64().unwrap_or(0.0)))
-        .collect();
+        .map(|dls| {
+            dls.iter()
+                .filter(|(_, ld)| ld.pointer("/extent/metaparameter").is_some())
+                .map(|(name, _)| name.clone())
+                .collect()
+        })
+        .unwrap_or_default()
+}
 
-    let n_all = polid.len();
-    let (mut lo, mut la, mut an, mut co) = (vec![], vec![], vec![], vec![]);
-    for i in 0..n_all {
-        let c = codes
-            .get(polid[i].trim().to_uppercase().as_str())
-            .copied()
-            .unwrap_or(0.0);
-        if c > 0.0 && lon[i].is_finite() && lat[i].is_finite() && ann[i].is_finite() {
-            lo.push(lon[i]);
-            la.push(lat[i]);
-            an.push(ann[i]);
-            co.push(c);
-        }
+/// REDUCED runs: truncate every record-discovering loader to its first `n`
+/// DELIVERED records with a loader-level `select` range (esm-spec §8.9.2).
+/// Because the selection follows the loader's own `record_filter`, this picks
+/// the same records the previous runners' post-filter `truncate(n)` did — and
+/// `extent` then re-discovers the smaller N_REC by itself.
+fn truncate_records(doc: &mut Value, n: usize) {
+    for name in record_loaders(doc) {
+        doc["data_loaders"][&name]["select"] =
+            json!({"axes": [{"range": {"start": 0, "stop": n}}]});
     }
-    println!("  EGU FF10 records: {n_all} read, {} recognised-pathway kept", lo.len());
-    if let Some(n) = firstn {
-        lo.truncate(n);
-        la.truncate(n);
-        an.truncate(n);
-        co.truncate(n);
-    }
-    Ok((lo, la, an, co))
 }
 
 fn run() -> Result<(), String> {
@@ -188,80 +123,58 @@ fn run() -> Result<(), String> {
     println!("scratch: {}", paths::scratch().display());
     println!("cache:   {}", paths::esio_cache().display());
 
-    let doc: Value = serde_json::from_str(
+    let mut doc: Value = serde_json::from_str(
         &std::fs::read_to_string(&model_path).map_err(|e| format!("read {model_path:?}: {e}"))?,
     )
     .map_err(|e| format!("parse {model_path:?}: {e}"))?;
+    if let Some(n) = firstn {
+        truncate_records(&mut doc, n);
+    }
 
-    // ---- inputs: EGU records via the document-declared FF10 reader options --
-    println!("reading EGU emissions (EarthSciIO ff10: member_glob + skip_header_row) ...");
+    // ---- providers FROM THE DOCUMENT — ALL of them --------------------------
+    // Including the FF10 table: the loader declares its own reader options,
+    // code map, record filter and extent, so there is nothing left here to
+    // read, map, filter or count.
+    println!("building providers from the document ...");
     let t = Instant::now();
-    let (lon, lat, ann, code) = read_egu(&doc["data_loaders"]["EGU_Emis"], firstn)?;
-    let n_rec = lon.len();
-    let t_egu = t.elapsed().as_secs_f64();
-    println!("  N_REC = {n_rec}  in {t_egu:.1} s");
-
-    // ---- providers FROM THE DOCUMENT ----------------------------------------
-    println!("building providers from the document (ISRM_SR) ...");
     let cache_root = paths::esio_cache();
-    let providers = providers_from_document(&doc, &cache_root, Some(&["ISRM_SR"]), &HashMap::new())
+    // A local copy of a record loader's source is a LOCALITY choice of this
+    // run (gaftp.epa.gov is slow and flaky), so it is a url_override rather
+    // than an edit to the document.
+    let mut url_overrides: HashMap<String, String> = HashMap::new();
+    let zip = paths::egu_zip();
+    if zip.is_file() {
+        for name in record_loaders(&doc) {
+            url_overrides.insert(name, format!("file://{}", zip.display()));
+        }
+        println!("  record source mirrored from {}", zip.display());
+    }
+    let providers = providers_from_document(&doc, &cache_root, None, &url_overrides)
         .map_err(|e| e.to_string())?;
     println!(
         "  providers: {:?}",
         providers.iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>()
     );
+    let t_providers = t.elapsed().as_secs_f64();
 
-    // ---- src-cell rectangles: the [0:N_SRC] prefix of the full grid ---------
-    // The document declares src_W/src_S/src_E/src_N ([src_cells]) alongside the
-    // full-grid W/S/E/N ([pop_cells]); the loader note pins the prefix
-    // relationship. Slicing is input plumbing, not model math. (The rect
-    // providers are sampled from a second document-built set; the shared cache
-    // makes the re-read inside prepare a local hit.)
-    println!("materializing grid prefix (src_W/S/E/N) ...");
-    let t = Instant::now();
-    let mut ca: HashMap<String, ArrayD<f64>> = HashMap::new();
-    let mut rect_provs =
-        providers_from_document(&doc, &cache_root, Some(&["ISRM_SR"]), &HashMap::new())
-            .map_err(|e| e.to_string())?;
-    for k in ["W", "S", "E", "N"] {
-        let key = format!("ISRM_SR.{k}");
-        let p = rect_provs
-            .iter_mut()
-            .find(|(pk, _)| pk == &key)
-            .ok_or_else(|| format!("no document provider for {key}"))?;
-        let full = p.1.sample().map_err(|e| format!("sample {key}: {e}"))?;
-        let v: Vec<f64> = full.iter().take(N_SRC).copied().collect();
-        ca.insert(format!("src_{k}"), arr1(v));
-    }
-    let t_grid = t.elapsed().as_secs_f64();
-    println!("  grid prefix in {t_grid:.1} s");
-
-    // ---- const arrays: the EGU loader's variables, src rects ----------------
-    ca.insert("EGU_Emis.lon".into(), arr1(lon));
-    ca.insert("EGU_Emis.lat".into(), arr1(lat));
-    ca.insert("EGU_Emis.annual".into(), arr1(ann));
-    ca.insert("EGU_Emis.pollutant".into(), arr1(code));
-    for v in ["stkhgt", "stkdiam", "stktemp", "stkvel"] {
-        ca.insert(format!("EGU_Emis.{v}"), arr1(vec![0.0; n_rec])); // declared, unused
-    }
-
-    // ---- PREPARE (rewrite -> coords -> VI -> gated SR fetch -> graph eval) --
-    println!("prepare(pushdown_rewrite=true) — N_REC={n_rec} ...");
+    // ---- PREPARE (extent -> rewrite -> coords -> VI -> gated fetch -> graph)-
+    println!("prepare(pushdown_rewrite=true) — N_REC discovered by the loader ...");
     let t = Instant::now();
     let boxed: Vec<(String, Box<dyn PrepareProvider>)> = providers
         .into_iter()
         .map(|(k, p)| (k, Box::new(p) as Box<dyn PrepareProvider>))
         .collect();
-    let mut metaparameters = BTreeMap::new();
-    metaparameters.insert("N_REC".to_string(), n_rec as i64);
     let opts = PrepareOptions {
-        metaparameters,
         base_path: model_path.parent().map(|p| p.to_path_buf()),
         pushdown_rewrite: true,
         verbose: true,
         ..Default::default()
     };
-    let prep = prepare(&doc, ca, boxed, &opts).map_err(|e| e.to_string())?;
+    let prep = prepare(&doc, HashMap::new(), boxed, &opts).map_err(|e| e.to_string())?;
+    let n_rec = prep
+        .observed_field("X")
+        .map(|a| a.len())
+        .map_err(|e| format!("no projected emission coordinate to size N_REC from: {e}"))?;
     let t_prep = t.elapsed().as_secs_f64();
     println!(
         "PREPARE done in {t_prep:.1} s  (peak RSS so far: {:.2} GiB)",
@@ -280,7 +193,9 @@ fn run() -> Result<(), String> {
         .clone();
     members.sort_unstable();
     let n_ppl = members.len();
-    println!("engine-derived support set: |members| = {n_ppl} of {N_SRC} source cells");
+    let n_src = metaparam(&doc, "N_SRC");
+    let n_rcv = metaparam(&doc, "N_RCV");
+    println!("engine-derived support set: |members| = {n_ppl} of {n_src} source cells");
     if !reduced && n_ppl != 1520 {
         println!("  WARNING: expected 1520 emission-bearing cells at full scale");
     }
@@ -336,16 +251,15 @@ fn run() -> Result<(), String> {
     });
     let mut timing = BTreeMap::new();
     timing.insert("wall_seconds".to_string(), t0.elapsed().as_secs_f64());
-    timing.insert("egu_seconds".to_string(), t_egu);
-    timing.insert("grid_seconds".to_string(), t_grid);
+    timing.insert("providers_seconds".to_string(), t_providers);
     timing.insert("prepare_seconds".to_string(), t_prep);
     timing.insert("peak_rss_bytes".to_string(), peak_rss_bytes() as f64);
     contract::write_results(
         &out,
         &model_path.to_string_lossy(),
         "runtime_observed_graph",
-        N_SRC,
-        N_SRC,
+        n_src,
+        n_rcv,
         n_rec,
         &members,
         &pathways,
