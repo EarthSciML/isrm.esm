@@ -51,6 +51,18 @@
     "G3": "CLOSED (esm-spec 8.9). FF10/zip semantics ARE expressible now: EGU_Emis declares `reader_options` (the *egu* member glob + the asserted header row), a `codes` map on `pollutant` (POLID text -> the pathway enum, an unrecognised code DROPS the record) and a `record_filter` (a record with no coordinate or no annual total is not a record). The runner no longer reads, maps or filters this table.",
     "G5": "No polygon/choropleth plot type; best available is a centroid scatter (see examples).",
     "G6": "CLOSED (esm-spec 8.9.4). N_REC is still runtime-discovered (default 0), but the LOADER discovers it: EGU_Emis declares `extent: {metaparameter: N_REC}`, so prepare() samples it before it closes metaparameters and the surviving record count sizes emis_records. No caller counts rows. PUSHDOWN DRAFT: N_PPL is GONE \u2014 emis_src_cells is a derived index set whose extent is materialised from the emis_src_cells_faq producer (value-invention)."
+   },
+   "grid_mapping": {
+    "grid_mapping_name": "lambert_conformal_conic",
+    "standard_parallel": [
+     33.0,
+     45.0
+    ],
+    "latitude_of_projection_origin": 40.0,
+    "longitude_of_central_meridian": -97.0,
+    "earth_radius": 6370997.0,
+    "false_easting": 0.0,
+    "false_northing": 0.0
    }
   }
  },
@@ -4852,6 +4864,122 @@
       "src_cells"
      ],
      "description": "source-cell rectangle N-edge (projected LCC meters), src_cells axis."
+    },
+    "rcv_W": {
+     "type": "observed",
+     "units": "m",
+     "shape": [
+      "rcv_cells"
+     ],
+     "expression": {
+      "op": "aggregate",
+      "output_idx": [
+       "rcv"
+      ],
+      "ranges": {
+       "rcv": {
+        "from": "rcv_cells"
+       }
+      },
+      "args": [
+       "W"
+      ],
+      "expr": {
+       "op": "index",
+       "args": [
+        "W",
+        "rcv"
+       ]
+      }
+     },
+     "description": "Receptor cell rectangle west edge in LCC metres: the [0:52411] prefix of the full-grid W. Written so a run's output store carries the geometry its fields are over \u2014 a field over rcv_cells is not drawable without it."
+    },
+    "rcv_S": {
+     "type": "observed",
+     "units": "m",
+     "shape": [
+      "rcv_cells"
+     ],
+     "expression": {
+      "op": "aggregate",
+      "output_idx": [
+       "rcv"
+      ],
+      "ranges": {
+       "rcv": {
+        "from": "rcv_cells"
+       }
+      },
+      "args": [
+       "S"
+      ],
+      "expr": {
+       "op": "index",
+       "args": [
+        "S",
+        "rcv"
+       ]
+      }
+     },
+     "description": "Receptor cell rectangle south edge in LCC metres: the [0:52411] prefix of the full-grid S. Written so a run's output store carries the geometry its fields are over \u2014 a field over rcv_cells is not drawable without it."
+    },
+    "rcv_E": {
+     "type": "observed",
+     "units": "m",
+     "shape": [
+      "rcv_cells"
+     ],
+     "expression": {
+      "op": "aggregate",
+      "output_idx": [
+       "rcv"
+      ],
+      "ranges": {
+       "rcv": {
+        "from": "rcv_cells"
+       }
+      },
+      "args": [
+       "E"
+      ],
+      "expr": {
+       "op": "index",
+       "args": [
+        "E",
+        "rcv"
+       ]
+      }
+     },
+     "description": "Receptor cell rectangle east edge in LCC metres: the [0:52411] prefix of the full-grid E. Written so a run's output store carries the geometry its fields are over \u2014 a field over rcv_cells is not drawable without it."
+    },
+    "rcv_N": {
+     "type": "observed",
+     "units": "m",
+     "shape": [
+      "rcv_cells"
+     ],
+     "expression": {
+      "op": "aggregate",
+      "output_idx": [
+       "rcv"
+      ],
+      "ranges": {
+       "rcv": {
+        "from": "rcv_cells"
+       }
+      },
+      "args": [
+       "N"
+      ],
+      "expr": {
+       "op": "index",
+       "args": [
+        "N",
+        "rcv"
+       ]
+      }
+     },
+     "description": "Receptor cell rectangle north edge in LCC metres: the [0:52411] prefix of the full-grid N. Written so a run's output store carries the geometry its fields are over \u2014 a field over rcv_cells is not drawable without it."
     }
    },
    "equations": [],
