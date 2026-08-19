@@ -1,22 +1,22 @@
 {
   "above_model_layer_7": {
-    "emis_frac": 0.004301459623487242,
-    "emis_sum": 13269.864243158398,
+    "emis_frac": 0.012973056549447618,
+    "emis_sum": 2747.1340564,
     "inmap_behaviour": "clamp to SR layer 2 but keep the 9324-cell high-layer index, reinterpreted against the 52411-cell ground grid",
-    "n_rec": 654,
+    "n_rec": 286,
     "note": "Records whose plume rises above the top of model layer 7 \u2014 i.e. out of the 52411-cell ground grid and into the 9324-cell high-altitude grid. InMAP has a latent defect here: sr.Reader.layerFracs clamps the emission into SR layer 2 (correct, layers 3..26 all clamp), but the horizontal index it pairs with that layer is sr.indices[c], which srreader.go resets to 0 at every layer boundary. For a cell in layer >= 8 that index is a position in the COARSE 9324-cell grid, and Reader.source then reinterprets it as a position in the 52411-cell ground grid \u2014 so these emissions land on the wrong source cell. THIS ORACLE IMPLEMENTS THE CORRECT BEHAVIOUR: clamp to SR layer 2 at the source cell the emission actually came from. Any residual disagreement with the blog's published deathsK/deathsL is attributable to this group.",
     "oracle_behaviour": "clamp to SR layer 2 at the correct source cell",
     "sr_layer_assigned": 2
   },
   "binding": "python",
   "branch_usage": {
-    "momentum": 2073,
-    "no_buoyancy": 11108,
-    "stable_buoyant": 868,
-    "unstable_buoyant": 29601
+    "momentum": 44,
+    "no_buoyancy": 315,
+    "stable_buoyant": 304,
+    "unstable_buoyant": 1337
   },
-  "emis_total": 3084967.7562241927,
-  "firstn": 0,
+  "emis_total": 211756.88596817,
+  "firstn": 2000,
   "grid": {
     "n_cells_all": 596444,
     "n_cells_ground": 52411,
@@ -30,158 +30,158 @@
     ]
   },
   "kind": "plume_oracle",
-  "n_emitting_cells": 1520,
-  "n_rec": 43650,
+  "n_emitting_cells": 132,
+  "n_rec": 2000,
   "n_records_outside_grid": 0,
   "pathways": {
     "NH3": {
       "above_model_layer_7": {
-        "emis_sum": 333.21980175000004,
-        "n_rec": 71
+        "emis_sum": 313.95229374999997,
+        "n_rec": 43
       },
       "by_sr_layer": [
-        3066.7363250999997,
-        1642.31711171994,
-        20303.425778040822
+        937.6656899000001,
+        0.0,
+        1268.58056825
       ],
-      "emis_sum": 25012.479214860763,
+      "emis_sum": 2206.2462581499994,
       "frac_by_sr_layer": [
-        0.1226082508157747,
-        0.06565990910425959,
-        0.8117318400799657
+        0.4250049995263265,
+        0.0,
+        0.5749950004736738
       ],
-      "n_rec": 4784,
+      "n_rec": 293,
       "sr_name": "pNH4"
     },
     "NOx": {
       "above_model_layer_7": {
-        "emis_sum": 4684.59987327,
-        "n_rec": 146
+        "emis_sum": 1913.9121550000002,
+        "n_rec": 63
       },
       "by_sr_layer": [
-        41315.5977660502,
-        69855.74552608,
-        1203291.5390117276
+        2138.879683,
+        334.05686499999996,
+        99198.76278399999
       ],
-      "emis_sum": 1314462.8823038577,
+      "emis_sum": 101671.69933199999,
       "frac_by_sr_layer": [
-        0.03143154388173852,
-        0.053143946829174754,
-        0.9154245092890868
+        0.021037119444769745,
+        0.0032856425848570374,
+        0.9756772379703732
       ],
-      "n_rec": 9772,
+      "n_rec": 431,
       "sr_name": "pNO3"
     },
     "PM25": {
       "above_model_layer_7": {
-        "emis_sum": 656.8274983443,
-        "n_rec": 145
+        "emis_sum": 350.1132509,
+        "n_rec": 63
       },
       "by_sr_layer": [
-        4982.8233426087845,
-        8135.87692082642,
-        127704.00959171816
+        1179.51256693,
+        56.4859485,
+        4833.4068101
       ],
-      "emis_sum": 140822.70985515337,
+      "emis_sum": 6069.4053255300005,
       "frac_by_sr_layer": [
-        0.03538366324390426,
-        0.05777389832360686,
-        0.9068424384324888
+        0.19433741918150788,
+        0.009306669347390712,
+        0.7963559114711014
       ],
-      "n_rec": 10047,
+      "n_rec": 433,
       "sr_name": "PrimaryPM25"
     },
     "SOx": {
       "above_model_layer_7": {
-        "emis_sum": 7237.795456170001,
-        "n_rec": 144
+        "emis_sum": 70.74486689999999,
+        "n_rec": 59
       },
       "by_sr_layer": [
-        8104.892038653999,
-        67635.6645865617,
-        1495476.324628978
+        129.80798470000002,
+        97.14453230000001,
+        98945.66246410001
       ],
-      "emis_sum": 1571216.8812541934,
+      "emis_sum": 99172.61498109999,
       "frac_by_sr_layer": [
-        0.00515835346179862,
-        0.04304667636499224,
-        0.9517949701732094
+        0.0013089095686822257,
+        0.0009795499727269822,
+        0.997711540458591
       ],
-      "n_rec": 9095,
+      "n_rec": 411,
       "sr_name": "pSO4"
     },
     "VOC": {
       "above_model_layer_7": {
-        "emis_sum": 357.4216136241,
-        "n_rec": 148
+        "emis_sum": 98.41148985,
+        "n_rec": 58
       },
       "by_sr_layer": [
-        2122.59935586323,
-        4391.79591601296,
-        26938.40832425138
+        240.5541216,
+        27.278206739999998,
+        2369.0877430499995
       ],
-      "emis_sum": 33452.803596127575,
+      "emis_sum": 2636.92007139,
       "frac_by_sr_layer": [
-        0.06345056699848432,
-        0.1312833438128141,
-        0.8052660891887015
+        0.09122541263573328,
+        0.010344722631513375,
+        0.8984298647327532
       ],
-      "n_rec": 9952,
+      "n_rec": 432,
       "sr_name": "SOA"
     }
   },
   "plume_height_m": {
-    "max": 9437.075571422773,
-    "mean": 245.48121517805706,
+    "max": 7737.385721742854,
+    "mean": 829.095227650394,
     "min": 0.0,
     "sample": [
       240.3134921083077,
-      291.52720303061716,
-      171.13576432373833,
-      25.6032,
-      197.63166654689456,
-      97.536,
-      15.8496,
-      53.34,
-      64.92240000000001,
-      424.08636989327226,
-      209.3573106234706,
-      288.26215305477547,
-      396.76523452316115,
-      481.24095934967403,
-      30.48,
-      4.572,
-      18.8976,
-      114.03714285057245,
-      93.94278844050567,
-      47.74102555873287,
-      119.8543929731687,
-      101.79821334334372,
-      199.14438389225313,
-      200.44321712174835,
-      157.74254041812185
+      781.6318166032238,
+      262.36805105494614,
+      258.40139546109054,
+      997.588286776335,
+      65.82031297197966,
+      174.6802481863166,
+      290.771838569602,
+      2893.9680326886514,
+      5889.291025761887,
+      287.53456063945066,
+      212.01809642856455,
+      30.465890450387185,
+      18.288,
+      43.615302204273775,
+      41.10298933102891,
+      44.912937425105056,
+      0.0,
+      0.0,
+      33.30123850856806,
+      34.033779365106696,
+      310.0769107060068,
+      320.0989807837394,
+      118.22298745975866,
+      2948.3425469159156
     ],
-    "sha256": "0ff1d68131baf4dd09fe2e5bc639ac025e3aa156ef6d435d2945514a12615702",
-    "sum": 10715255.04252219
+    "sha256": "0abea5c244971050cd89ade516ad676e1dc17df4e1a99f23b4620093761a9b11",
+    "sum": 1658190.455300788
   },
   "plume_model_layer": {
     "histogram": [
-      12108,
-      9155,
-      11017,
-      6392,
-      2156,
-      1177,
-      553,
-      438,
-      654
+      757,
+      93,
+      329,
+      241,
+      36,
+      119,
+      88,
+      51,
+      286
     ],
     "note": "index 8 is the sentinel 'at or above the top of model layer 7' (plumerise.ErrAboveModelTop on a column truncated at layer 7); it is not a model layer index",
-    "sha256": "039f20dba9ee6bced61f76a209a2ddae84c075975093e6b368ecaed2ed66a8e1"
+    "sha256": "da3c43470d9bf0b18e17954215d7721dafeeedb46a11ae00a79e3847c56942d1"
   },
   "ppl": {
-    "count": 1520,
-    "sha256": "6f784d7e66f63872901126dabb2dd7354a96cdcd3d4585b2f52d20b6105a875b"
+    "count": 132,
+    "sha256": "073ff8bed5a636bc018519e213dc8f955d7ede5783da13a59a02422439072a9c"
   },
   "purpose": "record -> SR layer assignment for the plume-rise addition to isrm.esm; checkable without fetching the SR matrix",
   "source": {
@@ -211,28 +211,28 @@
   "sr_layer": {
     "encoding": "sha256 over the per-record SR layer as ASCII decimals joined by ',' in record order (contract/results.py int_seq_sha256)",
     "histogram": [
-      12108,
-      9155,
-      22387
+      757,
+      93,
+      1150
     ],
-    "sha256": "808e0971a2eda1de1ffc53e242f7ea3fd9bbbda85c3b61702a56f71dd12b434b"
+    "sha256": "574b3c3fb70152ac44cdb45ca7ae836d1b6e389f37b531529432e5ff9fbc22fe"
   },
   "stack_layer": {
     "histogram": [
-      30413,
-      8460,
-      3899,
-      878
+      1594,
+      132,
+      238,
+      36
     ],
     "histogram_height_gt_0": [
-      29313,
-      8460,
-      3899,
-      878
+      1449,
+      132,
+      238,
+      36
     ],
-    "max_stack_height_m": 316.3824,
-    "n_zero_height": 1100,
-    "sha256": "16b82b773e086aceb424f8e241593bd9f3c095e221af790ac30d6f6e8d65ef9d"
+    "max_stack_height_m": 304.8,
+    "n_zero_height": 145,
+    "sha256": "9042d7fa767ec4010aa7c62d06f211131c9316800188af7bee727d5233080249"
   },
   "units": {
     "emissions": "short tons/yr",
