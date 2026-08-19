@@ -193,6 +193,13 @@ def main(argv: list[str]) -> int:
     for path in argv[1:]:
         with open(path) as fh:
             doc = json.load(fh)
+        # `contract/records/` also holds records that are not results records —
+        # e.g. plume_oracle.json, which answers a different question and has a
+        # different shape. They are tagged with `kind`; results records are not.
+        # Skip them so `contract/records/*.json` stays a usable glob.
+        if "kind" in doc:
+            print(f"skipping {path}  (kind={doc['kind']!r} — not a results record)")
+            continue
         validate_schema(path, doc, rep)
         loaded.append((path, doc))
 

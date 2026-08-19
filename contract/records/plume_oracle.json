@@ -1,0 +1,234 @@
+{
+  "above_model_layer_7": {
+    "emis_frac": 0.004301459623487242,
+    "emis_sum": 13269.864243158398,
+    "inmap_behaviour": "clamp to SR layer 2 but keep the 9324-cell high-layer index, reinterpreted against the 52411-cell ground grid",
+    "n_rec": 654,
+    "note": "Records whose plume rises above the top of model layer 7 \u2014 i.e. out of the 52411-cell ground grid and into the 9324-cell high-altitude grid. InMAP has a latent defect here: sr.Reader.layerFracs clamps the emission into SR layer 2 (correct, layers 3..26 all clamp), but the horizontal index it pairs with that layer is sr.indices[c], which srreader.go resets to 0 at every layer boundary. For a cell in layer >= 8 that index is a position in the COARSE 9324-cell grid, and Reader.source then reinterprets it as a position in the 52411-cell ground grid \u2014 so these emissions land on the wrong source cell. THIS ORACLE IMPLEMENTS THE CORRECT BEHAVIOUR: clamp to SR layer 2 at the source cell the emission actually came from. Any residual disagreement with the blog's published deathsK/deathsL is attributable to this group.",
+    "oracle_behaviour": "clamp to SR layer 2 at the correct source cell",
+    "sr_layer_assigned": 2
+  },
+  "binding": "python",
+  "branch_usage": {
+    "momentum": 2073,
+    "no_buoyancy": 11108,
+    "stable_buoyant": 868,
+    "unstable_buoyant": 29601
+  },
+  "emis_total": 3084967.7562241927,
+  "grid": {
+    "n_cells_all": 596444,
+    "n_cells_ground": 52411,
+    "n_cells_high": 9324,
+    "n_ground_grid_layers": 8,
+    "n_model_layers": 27,
+    "sr_layers": [
+      0,
+      1,
+      2
+    ]
+  },
+  "kind": "plume_oracle",
+  "n_emitting_cells": 1520,
+  "n_rec": 43650,
+  "n_records_outside_grid": 0,
+  "pathways": {
+    "NH3": {
+      "above_model_layer_7": {
+        "emis_sum": 333.21980175000004,
+        "n_rec": 71
+      },
+      "by_sr_layer": [
+        3066.7363250999997,
+        1642.31711171994,
+        20303.425778040822
+      ],
+      "emis_sum": 25012.479214860763,
+      "frac_by_sr_layer": [
+        0.1226082508157747,
+        0.06565990910425959,
+        0.8117318400799657
+      ],
+      "n_rec": 4784,
+      "sr_name": "pNH4"
+    },
+    "NOx": {
+      "above_model_layer_7": {
+        "emis_sum": 4684.59987327,
+        "n_rec": 146
+      },
+      "by_sr_layer": [
+        41315.5977660502,
+        69855.74552608,
+        1203291.5390117276
+      ],
+      "emis_sum": 1314462.8823038577,
+      "frac_by_sr_layer": [
+        0.03143154388173852,
+        0.053143946829174754,
+        0.9154245092890868
+      ],
+      "n_rec": 9772,
+      "sr_name": "pNO3"
+    },
+    "PM25": {
+      "above_model_layer_7": {
+        "emis_sum": 656.8274983443,
+        "n_rec": 145
+      },
+      "by_sr_layer": [
+        4982.8233426087845,
+        8135.87692082642,
+        127704.00959171816
+      ],
+      "emis_sum": 140822.70985515337,
+      "frac_by_sr_layer": [
+        0.03538366324390426,
+        0.05777389832360686,
+        0.9068424384324888
+      ],
+      "n_rec": 10047,
+      "sr_name": "PrimaryPM25"
+    },
+    "SOx": {
+      "above_model_layer_7": {
+        "emis_sum": 7237.795456170001,
+        "n_rec": 144
+      },
+      "by_sr_layer": [
+        8104.892038653999,
+        67635.6645865617,
+        1495476.324628978
+      ],
+      "emis_sum": 1571216.8812541934,
+      "frac_by_sr_layer": [
+        0.00515835346179862,
+        0.04304667636499224,
+        0.9517949701732094
+      ],
+      "n_rec": 9095,
+      "sr_name": "pSO4"
+    },
+    "VOC": {
+      "above_model_layer_7": {
+        "emis_sum": 357.4216136241,
+        "n_rec": 148
+      },
+      "by_sr_layer": [
+        2122.59935586323,
+        4391.79591601296,
+        26938.40832425138
+      ],
+      "emis_sum": 33452.803596127575,
+      "frac_by_sr_layer": [
+        0.06345056699848432,
+        0.1312833438128141,
+        0.8052660891887015
+      ],
+      "n_rec": 9952,
+      "sr_name": "SOA"
+    }
+  },
+  "plume_height_m": {
+    "max": 9437.075571422773,
+    "mean": 245.48121517805706,
+    "min": 0.0,
+    "sample": [
+      240.3134921083077,
+      291.52720303061716,
+      171.13576432373833,
+      25.6032,
+      197.63166654689456,
+      97.536,
+      15.8496,
+      53.34,
+      64.92240000000001,
+      424.08636989327226,
+      209.3573106234706,
+      288.26215305477547,
+      396.76523452316115,
+      481.24095934967403,
+      30.48,
+      4.572,
+      18.8976,
+      114.03714285057245,
+      93.94278844050567,
+      47.74102555873287,
+      119.8543929731687,
+      101.79821334334372,
+      199.14438389225313,
+      200.44321712174835,
+      157.74254041812185
+    ],
+    "sha256": "0ff1d68131baf4dd09fe2e5bc639ac025e3aa156ef6d435d2945514a12615702",
+    "sum": 10715255.04252219
+  },
+  "plume_model_layer": {
+    "histogram": [
+      12108,
+      9155,
+      11017,
+      6392,
+      2156,
+      1177,
+      553,
+      438,
+      654
+    ],
+    "note": "index 8 is the sentinel 'at or above the top of model layer 7' (plumerise.ErrAboveModelTop on a column truncated at layer 7); it is not a model layer index",
+    "sha256": "039f20dba9ee6bced61f76a209a2ddae84c075975093e6b368ecaed2ed66a8e1"
+  },
+  "ppl": {
+    "count": 1520,
+    "sha256": "6f784d7e66f63872901126dabb2dd7354a96cdcd3d4585b2f52d20b6105a875b"
+  },
+  "purpose": "record -> SR layer assignment for the plume-rise addition to isrm.esm; checkable without fetching the SR matrix",
+  "source": {
+    "arrays": [
+      "Temperature",
+      "WindSpeed",
+      "S1",
+      "SClass",
+      "WindSpeedInverse",
+      "WindSpeedMinusThird",
+      "WindSpeedMinusOnePointFour",
+      "LayerHeight",
+      "Dz",
+      "W",
+      "S",
+      "E",
+      "N",
+      "layers"
+    ],
+    "emissions_zip": "2016fd_inputs_point.zip",
+    "isrm_zarr": "https://inmap-model.s3.amazonaws.com/isrm_v1.2.1.zarr",
+    "members": [
+      "2016fd_cb6_16j/inputs/ptegu/egucems_2016v2_POINT_20180327_HCLCLaug_12apr2018_v2.csv",
+      "2016fd_cb6_16j/inputs/ptegu/egunoncems_2016v2_POINT_20180327_HCLCLaug_05apr2018_v0.csv"
+    ]
+  },
+  "sr_layer": {
+    "encoding": "sha256 over the per-record SR layer as ASCII decimals joined by ',' in record order (contract/results.py int_seq_sha256)",
+    "histogram": [
+      12108,
+      9155,
+      22387
+    ],
+    "sha256": "808e0971a2eda1de1ffc53e242f7ea3fd9bbbda85c3b61702a56f71dd12b434b"
+  },
+  "stack_layer": {
+    "histogram_height_gt_0": [
+      29313,
+      8460,
+      3899,
+      878
+    ],
+    "max_stack_height_m": 316.3824,
+    "n_zero_height": 1100,
+    "sha256": "16b82b773e086aceb424f8e241593bd9f3c095e221af790ac30d6f6e8d65ef9d"
+  },
+  "units": {
+    "emissions": "short tons/yr",
+    "heights": "m"
+  }
+}

@@ -118,7 +118,9 @@ the broad-phase candidate pairs directly rather than testing every
 isrm.esm          the model — one document, no variants
 contract/         the shared result record: schema, emitters (results.jl/.py),
                   comparator, and records/ — four frozen pushdown-era
-                  full-scale baselines the live runs are compared against
+                  full-scale baselines the live runs are compared against.
+                  Also plume_oracle.py, the offline record -> SR-layer check
+                  on plume rise (see contract/README.md)
 run-jl/           Julia shim   (run.jl; setup.jl instantiates the project)
 run-py/           Python shim  (run.py; requirements.txt is the venv recipe)
 run-rs/           Rust shim    (cargo project)

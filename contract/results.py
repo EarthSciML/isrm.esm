@@ -24,10 +24,22 @@ def sample_indices(n_rcv: int) -> list[int]:
     return [1 + (k * (n_rcv - 1) + d // 2) // d for k in range(SAMPLE_N)]
 
 
+def int_seq_sha256(values: Iterable[int]) -> str:
+    """sha256 over an ORDERED integer sequence as ASCII decimals joined by ','.
+
+    The same wire format as :func:`ppl_sha256` — ASCII decimals, ``,`` separator,
+    no spaces — but order-preserving. ``ppl`` is a member *set*, so it is sorted
+    before hashing; a per-record integer field (e.g. the plume-rise SR-layer
+    assignment, one value per emission record) is a *sequence* whose order is
+    part of the value, so it must not be sorted. Same convention, two uses.
+    """
+    s = ",".join(str(int(v)) for v in values)
+    return hashlib.sha256(s.encode("ascii")).hexdigest()
+
+
 def ppl_sha256(ids: Iterable[int]) -> str:
     """sha256 over sorted 1-based ids as ASCII decimals joined by ',' (no spaces)."""
-    s = ",".join(str(int(i)) for i in sorted(int(i) for i in ids))
-    return hashlib.sha256(s.encode("ascii")).hexdigest()
+    return int_seq_sha256(sorted(int(i) for i in ids))
 
 
 def field_sha256(v: Sequence[float]) -> str:
