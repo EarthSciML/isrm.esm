@@ -112,6 +112,14 @@ The three emitters agree on the wire format too: `results.jl`, `results.py` and
 digests from the same input, and all three refuse a non-integral value rather
 than rounding it away.
 
+What is **not** yet closed: the full-scale run in the table above was launched
+before the `plume` block existed, so it never emitted one, and the full-scale
+`sr_layer` digest has therefore not been checked against
+`contract/records/plume_oracle.json`'s
+`808e0971a2eda1de1ffc53e242f7ea3fd9bbbda85c3b61702a56f71dd12b434b`. The next
+full-scale run closes that, at no extra cost — the block comes off observeds
+the run already evaluates.
+
 ## Why `ppl` is the number that matters
 
 `ppl` is the set of grid cells that contain at least one emission source —
