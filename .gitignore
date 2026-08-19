@@ -3,3 +3,6 @@
 data/
 __pycache__/
 *.pyc
+
+# Agent worktrees (git worktree add .claude/worktrees/...)
+.claude/
