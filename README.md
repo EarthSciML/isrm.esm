@@ -76,9 +76,22 @@ deliberate difference and what it costs.
 the numbers; both bindings are currently unable to run this document at all,
 for reasons unrelated to plume rise — see [What runs today](#what-runs-today).
 
-The deviation is the deliberate one, and it is the only one: `RTOL_ORACLE` in
+`RTOL_ORACLE` in
 [`contract/compare_results.py`](contract/compare_results.py) is set from these
 two measurements and nothing wider.
+
+**The residual is attributed but not proven.** The deliberate deviation below
+is the expected cause, its sign is right, and the argument for why 0.43% of
+misplaced mass buys ~0.8% of deaths is written out in that file — but nothing
+here *measures* the split between that cause and any other. Two candidates are
+untested: the hosted ISRM matrix may have changed since the 2019 tutorial, and
+the tutorial's own path writes its emissions through a shapefile, whose DBF
+numeric fields could truncate the stack parameters that plume rise reads. The
+decisive test is to implement the bug-compatible variant and see whether it
+lands on `6928.959583` exactly; that was considered and deliberately declined,
+because reproducing a defect is a worse artifact than documenting one. Until
+someone runs it, read the +0.79% as *consistent with* the explanation below
+rather than as evidence for it.
 
 Two numbers came back **unchanged** from the ground-level-only era, which is
 the check that says plume rise moved what it was supposed to and nothing else:
