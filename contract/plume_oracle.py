@@ -124,13 +124,21 @@ EXPECT = {
                "unstable_buoyant": 29601, "no_buoyancy": 11108},
     "max_plume_height_m": 9437.1,        # to 0.1 m
     "n_above_layer7": 654,
-    # Pathway totals, short tons/yr. These are the document's own `emis_sum`
-    # values (contract/records/python.json), so agreeing with them proves the
-    # oracle ingests the FF10 zip exactly the way isrm.esm does.
+    # Pathway totals, short tons/yr, and the emitting-cell support set below:
+    # both are the document's own values, from
+    # contract/records/ground-level-only/python.json. Agreeing with them proves
+    # the oracle ingests the FF10 zip and contains points in cells exactly the
+    # way isrm.esm does — so a disagreement in the SR-layer assignment is about
+    # plume rise and nothing else.
+    #
+    # They survived the plume-rise re-baselining that retired those records:
+    # plume rise moves mass between LAYERS, never into or out of a pathway, and
+    # changes which layer a record emits into, never which cell. A live
+    # plume-era record must still carry these same five totals and this same
+    # `ppl` digest, and compare_results.py checks that.
     "emis_total": {"VOC": 33452.80359612757, "NOx": 1314462.8823038577,
                    "NH3": 25012.479214860767, "SOx": 1571216.8812541936,
                    "PM25": 140822.70985515337},
-    # Ditto for the emitting-cell support set: the document's `ppl`.
     "ppl_sha256": "6f784d7e66f63872901126dabb2dd7354a96cdcd3d4585b2f52d20b6105a875b",
     # Percent of each pathway's mass landing in SR layer 0/1/2, to 0.1 pt.
     "sr_split_pct": {
@@ -554,7 +562,15 @@ def main(argv=None) -> int:
         "stack_layer": {
             "n_zero_height": n_zero,
             "max_stack_height_m": float(hs.max()),
+            # Two histograms, because they answer two questions. The
+            # height>0 one is the physics: how many STACKS top out in each
+            # model layer, with the zero-height records (which never enter
+            # plume rise) excluded. The all-records one is what a runner can
+            # emit from the document's `stack_layer` observed alone — that
+            # observed is 0 for a zero-height record, so bin 0 carries them —
+            # and is therefore the one the contract compares.
             "histogram_height_gt_0": sl_hist,
+            "histogram": np.bincount(stack_layer, minlength=4).tolist(),
             "sha256": int_seq_sha256(stack_layer),
         },
         "plume_model_layer": {
