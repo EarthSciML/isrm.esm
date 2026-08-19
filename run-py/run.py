@@ -277,20 +277,35 @@ def main() -> int:
     dL = np.asarray(observed_field(prep, "deathsL"), dtype=float)
     tp = np.asarray(observed_field(prep, "TotalPM25"), dtype=float)
     pathways = {}
+    emis_by_layer = {}
     for arr, evars, cvar in PW_OBS:
         # A pathway's emissions are now spread over the three SR layers; the
         # record's `emis_sum` is the pathway TOTAL, so it stays comparable to
         # the ground-level-only baselines (plume rise moves mass between
         # layers, never into or out of a pathway).
-        ep = np.concatenate(
-            [np.asarray(observed_field(prep, v), dtype=float).ravel() for v in evars]
-        )
+        es = [np.asarray(observed_field(prep, v), dtype=float).ravel() for v in evars]
+        ep = np.concatenate(es)
         cp = np.asarray(observed_field(prep, cvar), dtype=float)
         pathways[arr] = {
             "emis_sum": float(ep.sum()),
             "conc_sum": float(cp.sum()),
             "conc_max": float(cp.max()),
         }
+        # How much mass plume rise put in each SR layer — the physics made
+        # visible as tons, per pathway.
+        emis_by_layer[arr] = [float(e.sum()) for e in es]
+    # The layer assignment itself. These are the document's OWN observeds, read
+    # through the same `observed_field` path as everything else — this runner
+    # does not know what ASME is, and must not: the point of the contract's
+    # `plume` block is that the ENGINE produced the assignment from the spec.
+    # contract/plume_oracle.py computes the same quantity independently, from
+    # the meteorology arrays and without the SR matrix, and compare_results.py
+    # checks the two against each other.
+    plume = contract.plume_block(
+        plume_layer=np.asarray(observed_field(prep, "plume_layer"), dtype=float).ravel(),
+        stack_layer=np.asarray(observed_field(prep, "stack_layer"), dtype=float).ravel(),
+        emis_by_sr_layer=emis_by_layer,
+    )
     t_eval = time.time() - t
     log(f"field readback in {t_eval:.1f} s")
 
@@ -311,6 +326,13 @@ def main() -> int:
                 "group is 0.43% of mass, and it is misplaced spatially rather "
                 "than lost), so something else differs."
             )
+    log(f"  SR-layer histogram (records per layer 0/1/2) = {plume['sr_layer']['histogram']}")
+    log(f"  sr_layer sha256 = {plume['sr_layer']['sha256']}")
+    log(
+        "    (check it against `python3 contract/plume_oracle.py"
+        + (f" --firstn {firstn}`" if reduced else "`")
+        + " — no SR matrix needed)"
+    )
     log("=" * 70)
 
     # ---- contract record ----------------------------------------------------
@@ -335,6 +357,7 @@ def main() -> int:
         total_pm25=tp.tolist(),
         deathsK=dK.tolist(),
         deathsL=dL.tolist(),
+        plume=plume,
         timing={
             "wall_seconds": time.time() - T0,
             "providers_seconds": t_providers,

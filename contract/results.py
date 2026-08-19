@@ -42,6 +42,84 @@ def ppl_sha256(ids: Iterable[int]) -> str:
     return int_seq_sha256(sorted(int(i) for i in ids))
 
 
+def _as_int_seq(values: Iterable[float], label: str) -> list[int]:
+    """An integer-valued observed, read back off the graph as float64, as ints.
+
+    The document's `plume_layer` / `stack_layer` are sums of 0.0/1.0 indicators,
+    so every value is an exact integer in float64 and this rounding is lossless.
+    A value that is NOT integral means the observed is no longer the indicator
+    sum it is supposed to be — that is a real disagreement about the physics, so
+    it raises rather than rounding it away.
+    """
+    out: list[int] = []
+    for i, x in enumerate(values):
+        f = float(x)
+        n = round(f)
+        if abs(f - n) > 0:
+            raise ValueError(
+                f"{label}[{i}] = {f!r} is not integral; an integer-valued observed "
+                "came back fractional, so the layer assignment is not what the "
+                "document states"
+            )
+        out.append(int(n))
+    return out
+
+
+def histogram(values: Sequence[int], min_bins: int) -> list[int]:
+    """Counts of 0, 1, 2, ... over a non-negative integer sequence.
+
+    At least ``min_bins`` bins so a reduced run, where a layer may simply be
+    empty, still emits the same shape a full run does; more if the data needs
+    them, because a value the schema does not expect must be VISIBLE rather
+    than dropped off the end of a fixed-width histogram.
+    """
+    if any(v < 0 for v in values):
+        raise ValueError("negative value in a layer assignment")
+    bins = [0] * max(min_bins, (max(values) + 1) if values else 0)
+    for v in values:
+        bins[v] += 1
+    return bins
+
+
+def plume_block(
+    *,
+    plume_layer: Iterable[float],
+    stack_layer: Iterable[float],
+    emis_by_sr_layer: Mapping[str, Sequence[float]],
+) -> dict[str, Any]:
+    """The schema's `plume` block, from the document's OWN observeds.
+
+    `plume_layer` and `stack_layer` are the per-record observeds read straight
+    off the graph — nothing here recomputes plume rise, and nothing here knows
+    what ASME is. `emis_by_sr_layer` maps each SR array name to the three
+    ``sum(E_<pathway>_L<layer>)`` totals, in layer order.
+
+    The two digests are the point: they are integer sequences in record order,
+    hashed the way `ppl` is, so they can be compared EXACTLY — against the other
+    bindings and against `contract/records/plume_oracle.json`, which computes
+    the same assignment from the meteorology arrays without touching the SR
+    matrix.
+    """
+    pl = _as_int_seq(plume_layer, "plume_layer")
+    sl = _as_int_seq(stack_layer, "stack_layer")
+    return {
+        "sr_layer": {
+            "count": len(pl),
+            "histogram": histogram(pl, 3),
+            "sha256": int_seq_sha256(pl),
+        },
+        "stack_layer": {
+            "count": len(sl),
+            "histogram": histogram(sl, 4),
+            "sha256": int_seq_sha256(sl),
+        },
+        "pathways": {
+            str(k): {"by_sr_layer": [float(x) for x in v]}
+            for k, v in emis_by_sr_layer.items()
+        },
+    }
+
+
 def field_sha256(v: Sequence[float]) -> str:
     """sha256 over a float field as little-endian IEEE-754 float64 bytes."""
     h = hashlib.sha256()
@@ -78,6 +156,7 @@ def write_results(
     deathsL: Sequence[float],
     binding_version: str = "",
     include_ppl_ids: bool = True,
+    plume: Mapping[str, Any] | None = None,
     timing: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if mode not in ("runtime_observed_graph", "oracle_step0"):
@@ -111,6 +190,8 @@ def write_results(
             "lepeule": field_summary(deathsL),
         },
     }
+    if plume is not None:
+        rec["plume"] = dict(plume)
     if timing is not None:
         rec["timing"] = {str(k): v for k, v in timing.items()}
 

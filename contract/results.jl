@@ -9,6 +9,8 @@
 #                 ppl = ppl_ids,                       # 1-based, any order
 #                 pathways = Dict("SOA" => (emis_sum=..., conc_sum=..., conc_max=...), ...),
 #                 total_pm25 = TotalPM25, deathsK = dK, deathsL = dL,
+#                 plume = plume_block(plume_layer = ..., stack_layer = ...,
+#                                     emis_by_sr_layer = Dict("SOA" => [e0, e1, e2], ...)),
 #                 timing = Dict("wall_seconds" => t))
 #
 # The hashing and sampling rules here MUST match contract/compare_results.py.
@@ -25,10 +27,82 @@ function sample_indices(n_rcv::Integer)
     return [1 + div(k * (n_rcv - 1) + div(d, 2), d) for k in 0:d]
 end
 
-"""sha256 over sorted 1-based ids as ASCII decimals joined by "," (no spaces)."""
-function ppl_sha256(ids)
-    s = join(string.(sort(collect(Int, ids))), ",")
+"""sha256 over an ORDERED integer sequence as ASCII decimals joined by ",".
+
+The same wire format as `ppl_sha256` — ASCII decimals, "," separator, no spaces
+— but order-preserving. `ppl` is a member *set*, so it is sorted before hashing;
+a per-record integer field (e.g. the plume-rise SR-layer assignment, one value
+per emission record) is a *sequence* whose order is part of the value, so it
+must not be sorted. Same convention, two uses; mirrors `int_seq_sha256` in
+results.py and contract.rs."""
+function int_seq_sha256(values)
+    s = join((string(Int(v)) for v in values), ",")
     return bytes2hex(SHA.sha256(s))
+end
+
+"""sha256 over sorted 1-based ids as ASCII decimals joined by "," (no spaces)."""
+ppl_sha256(ids) = int_seq_sha256(sort(collect(Int, ids)))
+
+"""An integer-valued observed, read back off the graph as Float64, as Ints.
+
+The document's `plume_layer` / `stack_layer` are sums of 0.0/1.0 indicators, so
+every value is an exact integer in Float64 and this conversion is lossless. A
+value that is NOT integral means the observed is no longer the indicator sum it
+is supposed to be — a real disagreement about the physics — so it errors rather
+than rounding it away."""
+function as_int_seq(values, label::AbstractString)
+    out = Vector{Int}(undef, length(values))
+    for (i, x) in enumerate(values)
+        f = Float64(x)
+        isinteger(f) || error("$label[$i] = $f is not integral; an integer-valued " *
+                              "observed came back fractional, so the layer assignment " *
+                              "is not what the document states")
+        out[i] = Int(f)
+    end
+    return out
+end
+
+"""Counts of 0, 1, 2, ... over a non-negative integer sequence.
+
+At least `min_bins` bins so a reduced run, where a layer may simply be empty,
+emits the same shape a full run does; more if the data needs them, because a
+value the schema does not expect must be VISIBLE rather than dropped off the end
+of a fixed-width histogram."""
+function histogram(values, min_bins::Integer)
+    any(v -> v < 0, values) && error("negative value in a layer assignment")
+    n = max(Int(min_bins), isempty(values) ? 0 : maximum(values) + 1)
+    bins = zeros(Int, n)
+    for v in values
+        bins[v + 1] += 1
+    end
+    return bins
+end
+
+"""The schema's `plume` block, from the document's OWN observeds.
+
+`plume_layer` and `stack_layer` are the per-record observeds read straight off
+the graph — nothing here recomputes plume rise, and nothing here knows what ASME
+is. `emis_by_sr_layer` maps each SR array name to the three
+`sum(E_<pathway>_L<layer>)` totals, in layer order.
+
+The two digests are the point: integer sequences in record order, hashed the way
+`ppl` is, so they can be compared EXACTLY — against the other bindings and
+against `contract/records/plume_oracle.json`, which computes the same assignment
+from the meteorology arrays without touching the SR matrix."""
+function plume_block(; plume_layer, stack_layer, emis_by_sr_layer::AbstractDict)
+    pl = as_int_seq(plume_layer, "plume_layer")
+    sl = as_int_seq(stack_layer, "stack_layer")
+    return Dict{String,Any}(
+        "sr_layer" => Dict{String,Any}("count"     => length(pl),
+                                       "histogram" => histogram(pl, 3),
+                                       "sha256"    => int_seq_sha256(pl)),
+        "stack_layer" => Dict{String,Any}("count"     => length(sl),
+                                          "histogram" => histogram(sl, 4),
+                                          "sha256"    => int_seq_sha256(sl)),
+        "pathways" => Dict{String,Any}(
+            String(k) => Dict{String,Any}("by_sr_layer" => Float64.(collect(v)))
+            for (k, v) in emis_by_sr_layer),
+    )
 end
 
 """sha256 over a float field as little-endian IEEE-754 float64 bytes."""
@@ -64,6 +138,7 @@ function write_results(path::AbstractString;
                        deathsK::AbstractVector,
                        deathsL::AbstractVector,
                        include_ppl_ids::Bool = true,
+                       plume::Union{Nothing,AbstractDict} = nothing,
                        timing::Union{Nothing,AbstractDict} = nothing)
     mode in ("runtime_observed_graph", "oracle_step0") ||
         error("mode must be \"runtime_observed_graph\" or \"oracle_step0\", got $mode")
@@ -91,6 +166,7 @@ function write_results(path::AbstractString;
         "deaths"     => Dict("krewski" => field_summary(deathsK),
                              "lepeule" => field_summary(deathsL)),
     )
+    plume === nothing || (rec["plume"] = plume)
     timing === nothing || (rec["timing"] = Dict{String,Any}(String(k) => v for (k, v) in timing))
 
     mkpath(dirname(abspath(path)))

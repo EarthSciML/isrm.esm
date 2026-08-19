@@ -49,16 +49,108 @@ pub fn sample_indices(n_rcv: usize) -> Vec<usize> {
         .collect()
 }
 
-/// sha256 over sorted 1-based ids as ASCII decimals joined by "," (no spaces).
-pub fn ppl_sha256(ids: &[i64]) -> String {
-    let mut v = ids.to_vec();
-    v.sort_unstable();
-    let s = v
+/// sha256 over an ORDERED integer sequence as ASCII decimals joined by ",".
+///
+/// The same wire format as [`ppl_sha256`] — ASCII decimals, "," separator, no
+/// spaces — but order-preserving. `ppl` is a member *set*, so it is sorted
+/// before hashing; a per-record integer field (e.g. the plume-rise SR-layer
+/// assignment, one value per emission record) is a *sequence* whose order is
+/// part of the value, so it must not be sorted. Same convention, two uses;
+/// mirrors `int_seq_sha256` in `results.py` and `results.jl`.
+pub fn int_seq_sha256(values: &[i64]) -> String {
+    let s = values
         .iter()
         .map(|i| i.to_string())
         .collect::<Vec<_>>()
         .join(",");
     format!("{:x}", Sha256::digest(s.as_bytes()))
+}
+
+/// sha256 over sorted 1-based ids as ASCII decimals joined by "," (no spaces).
+pub fn ppl_sha256(ids: &[i64]) -> String {
+    let mut v = ids.to_vec();
+    v.sort_unstable();
+    int_seq_sha256(&v)
+}
+
+/// An integer-valued observed, read back off the graph as f64, as i64s.
+///
+/// The document's `plume_layer` / `stack_layer` are sums of 0.0/1.0 indicators,
+/// so every value is an exact integer in f64 and this conversion is lossless. A
+/// value that is NOT integral means the observed is no longer the indicator sum
+/// it is supposed to be — a real disagreement about the physics — so it is an
+/// error rather than something to round away.
+pub fn as_int_seq(values: &[f64], label: &str) -> Result<Vec<i64>, String> {
+    values
+        .iter()
+        .enumerate()
+        .map(|(i, &x)| {
+            if !x.is_finite() || x.fract() != 0.0 {
+                Err(format!(
+                    "{label}[{i}] = {x:?} is not integral; an integer-valued observed \
+                     came back fractional, so the layer assignment is not what the \
+                     document states"
+                ))
+            } else {
+                Ok(x as i64)
+            }
+        })
+        .collect()
+}
+
+/// Counts of 0, 1, 2, ... over a non-negative integer sequence.
+///
+/// At least `min_bins` bins so a reduced run, where a layer may simply be empty,
+/// emits the same shape a full run does; more if the data needs them, because a
+/// value the schema does not expect must be VISIBLE rather than dropped off the
+/// end of a fixed-width histogram.
+pub fn histogram(values: &[i64], min_bins: usize) -> Result<Vec<i64>, String> {
+    if values.iter().any(|&v| v < 0) {
+        return Err("negative value in a layer assignment".to_string());
+    }
+    let hi = values.iter().copied().max().unwrap_or(-1);
+    let mut bins = vec![0i64; min_bins.max((hi + 1) as usize)];
+    for &v in values {
+        bins[v as usize] += 1;
+    }
+    Ok(bins)
+}
+
+/// The schema's `plume` block, from the document's OWN observeds.
+///
+/// `plume_layer` and `stack_layer` are the per-record observeds read straight
+/// off the graph — nothing here recomputes plume rise, and nothing here knows
+/// what ASME is. `emis_by_sr_layer` maps each SR array name to the three
+/// `sum(E_<pathway>_L<layer>)` totals, in layer order.
+///
+/// The two digests are the point: integer sequences in record order, hashed the
+/// way `ppl` is, so they can be compared EXACTLY — against the other bindings
+/// and against `contract/records/plume_oracle.json`, which computes the same
+/// assignment from the meteorology arrays without touching the SR matrix.
+pub fn plume_block(
+    plume_layer: &[f64],
+    stack_layer: &[f64],
+    emis_by_sr_layer: &BTreeMap<String, [f64; 3]>,
+) -> Result<Value, String> {
+    let pl = as_int_seq(plume_layer, "plume_layer")?;
+    let sl = as_int_seq(stack_layer, "stack_layer")?;
+    let mut pw = Map::new();
+    for (k, v) in emis_by_sr_layer {
+        pw.insert(k.clone(), json!({ "by_sr_layer": v }));
+    }
+    Ok(json!({
+        "sr_layer": {
+            "count": pl.len(),
+            "histogram": histogram(&pl, 3)?,
+            "sha256": int_seq_sha256(&pl),
+        },
+        "stack_layer": {
+            "count": sl.len(),
+            "histogram": histogram(&sl, 4)?,
+            "sha256": int_seq_sha256(&sl),
+        },
+        "pathways": Value::Object(pw),
+    }))
 }
 
 /// sha256 over a float field as little-endian IEEE-754 float64 bytes.
@@ -106,6 +198,7 @@ pub fn write_results(
     deaths_k: &[f64],
     deaths_l: &[f64],
     binding_version: &str,
+    plume: Option<&Value>,
     timing: &BTreeMap<String, f64>,
 ) -> Result<(), String> {
     if mode != "runtime_observed_graph" && mode != "oracle_step0" {
@@ -134,7 +227,7 @@ pub fn write_results(
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| model.to_string());
 
-    let rec = json!({
+    let mut rec = json!({
         "binding": "rust",
         "binding_version": binding_version,
         "model": basename,
@@ -146,6 +239,9 @@ pub fn write_results(
         "deaths": { "krewski": field_summary(deaths_k), "lepeule": field_summary(deaths_l) },
         "timing": Value::Object(timing_map),
     });
+    if let Some(p) = plume {
+        rec["plume"] = p.clone();
+    }
 
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("mkdir {dir:?}: {e}"))?;

@@ -281,14 +281,20 @@ fn run() -> Result<(), String> {
     let dl = field("deathsL")?;
     let tp = field("TotalPM25")?;
     let mut pathways = BTreeMap::new();
+    let mut emis_by_layer: BTreeMap<String, [f64; 3]> = BTreeMap::new();
     for (arr, evars, cvar) in PW_OBS {
         // A pathway's emissions are now spread over the three SR layers; the
         // record's `emis_sum` is the pathway TOTAL, so it stays comparable to
         // the ground-level-only baselines (plume rise moves mass between
         // layers, never into or out of a pathway).
         let mut e: Vec<f64> = Vec::new();
-        for evar in evars {
-            e.extend(field(evar)?);
+        // How much mass plume rise put in each SR layer — the physics made
+        // visible as tons, per pathway.
+        let mut by_layer = [0.0f64; 3];
+        for (layer, evar) in evars.iter().copied().enumerate() {
+            let el = field(evar)?;
+            by_layer[layer] = contract::compensated_sum(&el);
+            e.extend(el);
         }
         let c = field(cvar)?;
         pathways.insert(
@@ -299,7 +305,21 @@ fn run() -> Result<(), String> {
                 conc_max: c.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
             },
         );
+        emis_by_layer.insert(arr.to_string(), by_layer);
     }
+
+    // The layer assignment itself. These are the document's OWN observeds, read
+    // through the same `observed_field` path as everything else — this runner
+    // does not know what ASME is, and must not: the point of the contract's
+    // `plume` block is that the ENGINE produced the assignment from the spec.
+    // contract/plume_oracle.py computes the same quantity independently, from
+    // the meteorology arrays and without the SR matrix, and compare_results.py
+    // checks the two against each other.
+    let plume = contract::plume_block(
+        &field("plume_layer")?,
+        &field("stack_layer")?,
+        &emis_by_layer,
+    )?;
 
     // Compensated throughout, so the reported totals are a property of the
     // data rather than of Rust's reduction order (contract::compensated_sum).
@@ -323,6 +343,22 @@ fn run() -> Result<(), String> {
             );
         }
     }
+    println!(
+        "  SR-layer histogram (records per layer 0/1/2) = {}",
+        plume["sr_layer"]["histogram"]
+    );
+    println!(
+        "  sr_layer sha256 = {}",
+        plume["sr_layer"]["sha256"].as_str().unwrap_or("?")
+    );
+    println!(
+        "    (check it against `python3 contract/plume_oracle.py{}` — no SR matrix needed)",
+        if reduced {
+            format!(" --firstn {}", n_rec)
+        } else {
+            String::new()
+        }
+    );
     println!("{}", "=".repeat(70));
 
     // ---- contract record ----------------------------------------------------
@@ -349,6 +385,7 @@ fn run() -> Result<(), String> {
         &dk,
         &dl,
         &format!("rust / earthsci-ast {}", env!("CARGO_PKG_VERSION")),
+        Some(&plume),
         &timing,
     )?;
 

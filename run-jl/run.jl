@@ -245,13 +245,30 @@ function main()
                   "pSO4"        => (["E_SOx_L0",  "E_SOx_L1",  "E_SOx_L2"],  "conc_pSO4"),
                   "PrimaryPM25" => (["E_PM25_L0", "E_PM25_L1", "E_PM25_L2"], "conc_PrimaryPM25")]
         pathways = Dict{String,Any}()
+        emis_by_layer = Dict{String,Vector{Float64}}()
         for (arr, (evars, cvar)) in PW_OBS
-            Ep = reduce(vcat, [vec(rt(v)) for v in evars])
+            Es = [vec(rt(v)) for v in evars]
+            Ep = reduce(vcat, Es)
             cp = rt(cvar)
             pathways[arr] = (emis_sum = sum(Ep), conc_sum = sum(cp), conc_max = maximum(cp))
+            # How much mass plume rise put in each SR layer — the physics made
+            # visible as tons, per pathway.
+            emis_by_layer[arr] = [sum(e) for e in Es]
         end
+        # The layer assignment itself. These are the document's OWN observeds,
+        # read through the same `observed_field` path as everything else — this
+        # runner does not know what ASME is, and must not: the point of the
+        # contract's `plume` block is that the ENGINE produced the assignment
+        # from the spec. contract/plume_oracle.py computes the same quantity
+        # independently, from the meteorology arrays and without the SR matrix,
+        # and compare_results.py checks the two against each other.
+        plume_layer = rt("plume_layer")
+        stack_layer = rt("stack_layer")
     end
     println("EVAL done in $(round(t_eval, digits=1)) s")
+
+    plume = plume_block(plume_layer = plume_layer, stack_layer = stack_layer,
+                        emis_by_sr_layer = emis_by_layer)
 
     sK = sum(dK); sL = sum(dL)
     println("\n", "="^70)
@@ -271,6 +288,11 @@ function main()
             "group is 0.43% of mass, and it is misplaced spatially rather than ",
             "lost), so something else differs.")
     end
+    println("  SR-layer histogram (records per layer 0/1/2) = ",
+            plume["sr_layer"]["histogram"])
+    println("  sr_layer sha256 = ", plume["sr_layer"]["sha256"])
+    println("    (check it against `python3 contract/plume_oracle.py",
+            reduced ? " --firstn $firstn`" : "`", " — no SR matrix needed)")
     println("="^70)
 
     # ---- contract record ----------------------------------------------------
@@ -282,6 +304,7 @@ function main()
         ppl = members,
         pathways = pathways,
         total_pm25 = tp, deathsK = dK, deathsL = dL,
+        plume = plume,
         timing = Dict("wall_seconds" => time() - T0,
                       "providers_seconds" => t_providers,
                       "build_seconds" => t_prep,
