@@ -26,11 +26,13 @@ languages so the sampled index set cannot drift on float rounding.
 ## `plume_oracle.py` — the cheap check on plume rise
 
 `isrm.esm` reproduces the InMAP source-receptor tutorial
-(<https://inmap.run/blog/2019/04/20/sr/>). Emitting every EGU record at ground
-level gives `sum(deathsK) = 7524.918845602511`; the blog, which accounts for
-**plume rise**, gets `6928.959583`. Adding plume rise to the document changes
-exactly one intermediate quantity — the `(source cell, SR layer)` pair each
-emission record is charged to — and every downstream number follows from it.
+(<https://inmap.run/blog/2019/04/20/sr/>), **plume rise included**: the
+document states the ASME rise itself and charges each emission record to the
+SR emission layer its plume reaches. Emitting everything at ground level
+instead gives `sum(deathsK) = 7524.918845602511`; the blog gets `6928.959583`.
+Plume rise changes exactly one intermediate quantity — the
+`(source cell, SR layer)` pair each record is charged to — and every
+downstream number follows from it.
 
 That pair is checkable **without the 330 GB SR matrix**. It needs thirteen
 1-D meteorology/geometry arrays off the ISRM zarr, ~16 MB compressed, each a
@@ -42,8 +44,17 @@ one to run first when the document's `deathsK` moves:
 
 ```sh
 python3 contract/plume_oracle.py            # ~1 min, writes records/plume_oracle.json
+python3 contract/plume_oracle.py --firstn 200   # the REDUCED target
 python3 contract/plume_oracle.py --help     # --out / --zip / --cache / --no-assert
 ```
+
+`--firstn N` truncates to the first N **delivered** records — the same
+truncation `ISRM_FIRSTN=N` applies to the shims, taken after the loader's
+`record_filter`, so it selects the same records — and writes
+`records/plume_oracle_first<N>.json`. That is what a reduced run is checked
+against while the full-scale one is too slow to iterate on. The expected
+values above are full-scale facts and are not asserted on a truncation; the
+structural checks on the grid and the algorithm still are.
 
 System `python3` (3.9) plus `numpy` and `numcodecs`; no venv. Zarr chunks are
 cached under `$ISRM_SCRATCH/plume-oracle-zarr`, resolved exactly the way

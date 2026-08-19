@@ -4,12 +4,12 @@
 
 Why this exists
 ---------------
-``isrm.esm`` currently emits every EGU record at ground level. The InMAP
-source-receptor tutorial (https://inmap.run/blog/2019/04/20/sr/) accounts for
-**plume rise**, which moves most of the emitted mass up into SR layers 1 and 2.
-Adding plume rise to the document changes exactly one intermediate quantity —
-the per-record ``(source cell, SR layer)`` pair — and everything downstream
-follows from it.
+``isrm.esm`` states plume rise itself, in its own observeds, the way the
+InMAP source-receptor tutorial (https://inmap.run/blog/2019/04/20/sr/) does —
+it moves most of the emitted mass up into SR layers 1 and 2. Plume rise
+changes exactly one intermediate quantity — the per-record
+``(source cell, SR layer)`` pair — and everything downstream follows from it.
+This script is the independent second opinion on that one quantity.
 
 Checking that pair does not need the 330 GB SR matrix: it needs 13 one-
 dimensional meteorology/geometry arrays off the ISRM zarr, ~16 MB compressed
@@ -32,6 +32,12 @@ One deliberate deviation from InMAP — see ABOVE_L7_NOTE below and the
 Usage
 -----
     python3 contract/plume_oracle.py [--out PATH] [--zip PATH] [--cache DIR]
+                                     [--firstn N]
+
+``--firstn N`` produces the REDUCED target: the first N delivered records, the
+same truncation ``ISRM_FIRSTN=N`` applies to the three shims, so a reduced run
+has something to be checked against. The full-scale expected values do not
+apply to a truncation and are not asserted there.
 
 Needs only the system python3 (3.9) plus numpy and numcodecs. The zarr chunks
 are cached under ``$ISRM_SCRATCH`` (default ``/scratch.local/$USER/isrm-esm``,
@@ -379,7 +385,19 @@ def main(argv=None) -> int:
                     "(default: $ISRM_SCRATCH/plume-oracle-zarr)")
     ap.add_argument("--no-assert", action="store_true",
                     help="emit the record even if the expected values drift")
+    ap.add_argument("--firstn", type=int, default=0, metavar="N",
+                    help="REDUCED target: keep only the first N delivered "
+                         "records, the same truncation ISRM_FIRSTN applies to "
+                         "the shims. The full-scale expected values do not "
+                         "apply to a truncation and are not asserted; the "
+                         "structural facts about the grid and the algorithm "
+                         "still are.")
     args = ap.parse_args(argv)
+    firstn = args.firstn if args.firstn and args.firstn > 0 else 0
+    full = firstn == 0
+    if not full and args.out == ap.get_default("out"):
+        args.out = os.path.join(CONTRACT_DIR, "records",
+                                "plume_oracle_first%d.json" % firstn)
 
     zip_path = args.zip or os.environ.get("EGU_ZIP", "") or os.path.join(
         REPO, "data", "2016fd_inputs_point.zip")
@@ -407,6 +425,12 @@ def main(argv=None) -> int:
 
     # ---- emissions -------------------------------------------------------
     rows, members = read_ff10(zip_path)
+    if not full:
+        # The shims truncate the DELIVERED record list — the rows that survive
+        # the loader's record_filter — so truncating here, after read_ff10 has
+        # applied the same filter, picks exactly the same records.
+        print(f"REDUCED: first {firstn} of {len(rows)} delivered records")
+        rows = rows[:firstn]
     n_rec = len(rows)
     pol = np.array([r[0] for r in rows], dtype=np.int64)
     em = np.array([r[1] for r in rows])
@@ -416,12 +440,18 @@ def main(argv=None) -> int:
     vs = np.array([r[5] for r in rows])
     lon = np.array([r[6] for r in rows])
     lat = np.array([r[7] for r in rows])
-    rep.check(n_rec == EXPECT["n_rec"], "emis/n_rec", f"{n_rec} != {EXPECT['n_rec']}")
     n_zero = int((hs == 0).sum())
-    rep.check(n_zero == EXPECT["n_zero_height"], "emis/n_zero_height",
-              f"{n_zero} != {EXPECT['n_zero_height']}")
-    rep.check(abs(hs.max() - EXPECT["max_stack_height_m"]) < 1e-6, "emis/max_stack_height",
-              f"{hs.max()} != {EXPECT['max_stack_height_m']}")
+    if full:
+        rep.check(n_rec == EXPECT["n_rec"], "emis/n_rec",
+                  f"{n_rec} != {EXPECT['n_rec']}")
+        rep.check(n_zero == EXPECT["n_zero_height"], "emis/n_zero_height",
+                  f"{n_zero} != {EXPECT['n_zero_height']}")
+        rep.check(abs(hs.max() - EXPECT["max_stack_height_m"]) < 1e-6,
+                  "emis/max_stack_height",
+                  f"{hs.max()} != {EXPECT['max_stack_height_m']}")
+    else:
+        rep.check(n_rec == firstn, "emis/n_rec_reduced",
+                  f"{n_rec} != the requested {firstn}")
 
     x, y = lcc_forward(lon, lat)
     cell = containing_cell(W, S, E, N, x, y, rep)
@@ -429,13 +459,14 @@ def main(argv=None) -> int:
     rep.check(n_outside == 0, "emis/all-in-grid",
               f"{n_outside} records fall outside the ISRM ground grid")
     emitting = sorted(set(int(c) for c in cell if c >= 0))
-    rep.check(len(emitting) == EXPECT["n_emitting_cells"], "emis/n_emitting_cells",
-              f"{len(emitting)} != {EXPECT['n_emitting_cells']}")
     # 1-based, matching the document's `ppl`.
     ppl_ids = [c + 1 for c in emitting]
     ppl_hash = ppl_sha256(ppl_ids)
-    rep.check(ppl_hash == EXPECT["ppl_sha256"], "emis/ppl_sha256",
-              f"{ppl_hash} != the document's ppl digest")
+    if full:
+        rep.check(len(emitting) == EXPECT["n_emitting_cells"], "emis/n_emitting_cells",
+                  f"{len(emitting)} != {EXPECT['n_emitting_cells']}")
+        rep.check(ppl_hash == EXPECT["ppl_sha256"], "emis/ppl_sha256",
+                  f"{ppl_hash} != the document's ppl digest")
 
     # ---- plume rise ------------------------------------------------------
     stack_layer, ph, plume_layer, sr_layer, branch = plume_layers(
@@ -443,21 +474,23 @@ def main(argv=None) -> int:
 
     pos = hs > 0
     sl_hist = np.bincount(stack_layer[pos], minlength=4).tolist()
-    rep.check(sl_hist == EXPECT["stack_layer_hist"], "plume/stack_layer_hist",
-              f"{sl_hist} != {EXPECT['stack_layer_hist']}")
     pl_hist = np.bincount(plume_layer, minlength=9).tolist()
-    rep.check(pl_hist == EXPECT["plume_layer_hist"], "plume/model_layer_hist",
-              f"{pl_hist} != {EXPECT['plume_layer_hist']}")
-    rep.check(branch == EXPECT["branch"], "plume/branch_usage",
-              f"{branch} != {EXPECT['branch']}")
-    rep.check(abs(round(float(ph.max()), 1) - EXPECT["max_plume_height_m"]) < 5e-2,
-              "plume/max_height", f"{ph.max()} != ~{EXPECT['max_plume_height_m']}")
+    if full:
+        rep.check(sl_hist == EXPECT["stack_layer_hist"], "plume/stack_layer_hist",
+                  f"{sl_hist} != {EXPECT['stack_layer_hist']}")
+        rep.check(pl_hist == EXPECT["plume_layer_hist"], "plume/model_layer_hist",
+                  f"{pl_hist} != {EXPECT['plume_layer_hist']}")
+        rep.check(branch == EXPECT["branch"], "plume/branch_usage",
+                  f"{branch} != {EXPECT['branch']}")
+        rep.check(abs(round(float(ph.max()), 1) - EXPECT["max_plume_height_m"]) < 5e-2,
+                  "plume/max_height", f"{ph.max()} != ~{EXPECT['max_plume_height_m']}")
 
     # ---- the above-layer-7 group (InMAP's latent defect) -----------------
     above = plume_layer >= N_GROUND_LAYERS
     n_above = int(above.sum())
-    rep.check(n_above == EXPECT["n_above_layer7"], "plume/n_above_layer7",
-              f"{n_above} != {EXPECT['n_above_layer7']}")
+    if full:
+        rep.check(n_above == EXPECT["n_above_layer7"], "plume/n_above_layer7",
+                  f"{n_above} != {EXPECT['n_above_layer7']}")
     em_total_all = float(em.sum())
     above_mass = float(em[above].sum())
 
@@ -476,17 +509,20 @@ def main(argv=None) -> int:
             "above_model_layer_7": {"n_rec": int((m & above).sum()),
                                     "emis_sum": float(em[m & above].sum())},
         }
-        rep.check(abs(tot - EXPECT["emis_total"][name]) <= 1e-6 * abs(tot),
-                  f"emis/total/{name}", f"{tot} != {EXPECT['emis_total'][name]}")
-        pct = [round(100.0 * b / tot, 1) for b in by]
-        rep.check(pct == EXPECT["sr_split_pct"][name], f"emis/sr_split/{name}",
-                  f"{pct} != {EXPECT['sr_split_pct'][name]}")
+        if full:
+            rep.check(abs(tot - EXPECT["emis_total"][name]) <= 1e-6 * abs(tot),
+                      f"emis/total/{name}",
+                      f"{tot} != {EXPECT['emis_total'][name]}")
+            pct = [round(100.0 * b / tot, 1) for b in by]
+            rep.check(pct == EXPECT["sr_split_pct"][name], f"emis/sr_split/{name}",
+                      f"{pct} != {EXPECT['sr_split_pct'][name]}")
 
     # ---- record ----------------------------------------------------------
     phs = field_summary(ph)
     phs["mean"] = phs["sum"] / len(ph)
     rec = {
         "kind": "plume_oracle",
+        "firstn": firstn,
         "binding": "python",
         "purpose": ("record -> SR layer assignment for the plume-rise addition to "
                     "isrm.esm; checkable without fetching the SR matrix"),
@@ -563,7 +599,8 @@ def main(argv=None) -> int:
         print(f"  {name:<6} total {p['emis_sum']:>12.1f}   "
               f"L0 {100*f[0]:>4.1f}%  L1 {100*f[1]:>4.1f}%  L2 {100*f[2]:>4.1f}%")
     print(f"\nabove model layer 7: {n_above} records, {above_mass:.1f} tons/yr "
-          f"({100*above_mass/em_total_all:.2f}% of emitted mass) — "
+          f"({100 * above_mass / em_total_all if em_total_all else 0.0:.2f}% "
+          f"of emitted mass) — "
           f"clamped to SR layer 2 at the correct source cell")
     print(f"sr_layer sha256: {rec['sr_layer']['sha256']}")
 
