@@ -6,13 +6,48 @@ evaluated the *same* document and got the *same* answer.
 | file | what it is |
 | --- | --- |
 | `results_schema.json` | the schema every runner's `results.json` conforms to |
-| `results.py`, `results.jl` | the emitters — Python and Julia mirrors of the same sampling and hashing rules |
+| `results.py`, `results.jl` | the emitters — Python and Julia mirrors of the same sampling and hashing rules (`run-rs/src/contract.rs` is the third) |
 | `compare_results.py` | the comparator, and the definition of record where the emitters disagree |
-| `records/*.json` | frozen full-scale baselines the live runs are compared against |
 | `plume_oracle.py` | the offline plume-rise oracle (below) |
+| `records/plume_oracle.json` | its full-scale output — the independent target for the `plume` block |
+| `records/plume_oracle_first{200,2000}.json` | the same at the two documented truncations, frozen so a reduced run can be checked without network access |
+| `records/ground-level-only/` | the four pre-plume-rise full-scale baselines, retired; see the README there |
 
 `compare_results.py` skips any record carrying a `kind` field, so
-`contract/records/*.json` stays a usable glob as non-results records land there.
+`contract/records/*.json` stays a usable glob as non-results records land
+there — with one exception, `kind: "plume_oracle"`, which is loaded as a
+first-class target for the `plume` block. Skipping it would have thrown away
+the only check in the set that says the physics is *right* rather than merely
+*agreed on*.
+
+## The `plume` block
+
+The schema's `plume` block is what makes plume rise a reported, compared
+result rather than an unexplained shift in `deathsK`. Each runner fills it
+from `observed_field` on the document's own `plume_layer` and `stack_layer`
+observeds and its `E_<pathway>_L<layer>` aggregates — no runner recomputes
+plume rise, and none of them contains the word ASME. That is the claim being
+made: the *engine* derived the assignment from the spec.
+
+* `sr_layer` — digest and histogram of the per-record SR emission layer. THE
+  quantity plume rise exists to produce; everything downstream follows from it.
+* `stack_layer` — the same for the model layer the stack top sits in, which is
+  what selects the meteorology the rise is computed from. It is there to
+  localize a disagreement: a wrong stack layer means the met gather is wrong,
+  a right stack layer with a wrong SR layer means the ASME expression is.
+* `pathways.<SR name>.by_sr_layer` — emitted mass in each layer, per pathway.
+  The physics, in tons.
+
+Both layer assignments are **integer-valued**, so `compare_results.py`
+compares them EXACTLY, the way it compares `ppl` — across every pair of live
+records, and against `records/plume_oracle.json`. A float tolerance there
+would hide a real disagreement about which layer a record emits into. The
+per-layer masses are floats and get the ordinary `RTOL_FIELD = 1e-12`.
+
+The oracle comparison is matched on `n_rec`, so a reduced oracle
+(`plume_oracle_first200.json`) is never held against a full-scale run: a
+truncation is a different problem, and the digest of a 200-record assignment
+says nothing about a 43,650-record one.
 
 ## Hashing
 
@@ -73,19 +108,34 @@ refuses to write the record if any of them drifts.
 
 Two of its checks are free cross-validation against the document itself: the
 five per-pathway emission totals and the `ppl` digest must equal those in
-`records/python.json`. Agreeing there proves the oracle ingests the FF10 zip
+`records/ground-level-only/python.json`. Those two survived the plume-rise
+re-baselining that retired that record — plume rise moves mass between layers,
+never into or out of a pathway, and changes which layer a record emits into,
+never which cell — so a live record must still carry them, and the comparator
+checks that. Agreeing there proves the oracle ingests the FF10 zip
 the way `isrm.esm` does, so a disagreement in the SR-layer assignment is about
 plume rise and nothing else.
 
 ### The record
 
-`records/plume_oracle.json`. `kind: "plume_oracle"`, so the comparator skips
-it. The headline field is `sr_layer.sha256` — sha256 over the per-record SR
-layer as ASCII decimals joined by `,` in record order, the same wire format as
+`records/plume_oracle.json`. `kind: "plume_oracle"`, so the comparator does not
+read it as a results record — but it does not skip it either: it is the target
+the `plume` block is checked against.
+
+The headline field is `sr_layer.sha256` — sha256 over the per-record SR layer
+as ASCII decimals joined by `,` in record order, the same wire format as
 `ppl_sha256`. Alongside it: `stack_layer` and `plume_model_layer` histograms
 and digests, `plume_height_m` (a `field_summary` plus `mean`), `branch_usage`
 (which of ASME's four branches each record took), and the per-pathway emission
 mass split across SR layers 0/1/2 in short tons/yr.
+
+`stack_layer` carries two histograms because they answer two questions.
+`histogram_height_gt_0` is the physics — how many *stacks* top out in each
+model layer, with the 1,100 zero-height records that never enter plume rise
+excluded. `histogram` counts all records, which is what a runner can emit from
+the document's `stack_layer` observed alone (that observed is 0 for a
+zero-height record, so bin 0 carries them), and is therefore the one the
+contract compares.
 
 Current values:
 
