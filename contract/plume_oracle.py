@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
-"""Offline oracle for the plume-rise addition to ``isrm.esm``: which SR layer
-(0, 1 or 2) does each EGU emission record land in?
+"""Offline oracle for the plume-rise addition to ``isrm.esm``: how is each EGU
+emission record's mass split across the SR matrix's three emission layers?
+
+Not "which layer": InMAP's ``sr.Reader.layerFracs`` splits a record across TWO
+layers whenever its plume's model layer falls strictly between two entries of
+``sr.layers`` = ``[0, 3, 6]`` — model layers 1-2 between SR 0 and 1, model
+layers 4-5 between SR 1 and 2 — interpolating on cell-CENTRE heights. So the
+answer is three per-record weights summing to 1, plus the integer index of the
+lower layer.
 
 Why this exists
 ---------------
@@ -8,10 +15,11 @@ Why this exists
 InMAP source-receptor tutorial (https://inmap.run/blog/2019/04/20/sr/) does —
 it moves most of the emitted mass up into SR layers 1 and 2. Plume rise
 changes exactly one intermediate quantity — the per-record
-``(source cell, SR layer)`` pair — and everything downstream follows from it.
-This script is the independent second opinion on that one quantity.
+``(source cell, SR-layer weights)`` assignment — and everything downstream
+follows from it. This script is the independent second opinion on that one
+quantity.
 
-Checking that pair does not need the 330 GB SR matrix: it needs 13 one-
+Checking it does not need the 330 GB SR matrix: it needs 13 one-
 dimensional meteorology/geometry arrays off the ISRM zarr, ~16 MB compressed
 total. So this is the *cheap* check on the new physics, and it is the one to
 run first when the document's deathsK moves. If the digest here matches what a
@@ -84,8 +92,30 @@ NALL = 596444       # 8*52411 + 19*9324
 MET = ("Temperature", "WindSpeed", "S1", "SClass", "WindSpeedInverse",
        "WindSpeedMinusThird", "WindSpeedMinusOnePointFour", "LayerHeight", "Dz",
        "W", "S", "E", "N")
-# `layers` is the SR matrix's own list of represented model layers: [0, 1, 2].
+# `layers` is the SR matrix's own list of the MODEL layers the SR calculation was
+# performed for. It is read only to be REPORTED — see SR_MODEL_LAYERS.
 INT_ARRAYS = ("layers",)
+
+# The model layers the three SR emission layers were computed for. DECLARED
+# HERE, and deliberately NOT taken from the store, exactly as isrm.esm declares
+# them in its SR_MODEL_L1 / SR_MODEL_L2 metaparameters.
+#
+# isrm_v1.2.1.ncf on Zenodo — the authoritative deposition — has
+# layers = [0, 3, 6]. The isrm_v1.2.1.zarr this repo reads serves [0, 1, 2]
+# instead: a machine-generated arange that displaced the real array during the
+# zarr conversion. Corroboration independent of the NetCDF: sr/sr.go attaches
+# `description: "Layer indices for which the SR calculation was performed"` to
+# `layers`, and the zarr's copy has NO attributes at all while neighbouring
+# InMAP variables (LayerHeight, Dz) keep theirs; the same conversion pass lost
+# the per-cell `Layer` variable and stripped .zattrs off the SR arrays, which is
+# why the shims need seed_empty_zattrs. Zenodo calls the three heights
+# "ground-level, low-stack, and high-stack", which [0,3,6] (0-58 m / 253-391 m /
+# 786-1049 m) is and [0,1,2] (three adjacent layers, all under 245 m) is not.
+# The matrix DATA is fine: Zenodo's zip is md5-identical across depositions and
+# its rows are byte-identical to the zarr's. One index array was replaced,
+# nothing was rescaled.
+SR_MODEL_LAYERS = [0, 3, 6]
+SR_LAYERS_CORRUPT = [0, 1, 2]      # what the zarr serves, and must never be used
 
 G = 9.80665                       # m/s2, plumerise.g
 FT_TO_M = 0.3048
@@ -99,7 +129,7 @@ ABOVE_L7_NOTE = (
     "Records whose plume rises above the top of model layer 7 — i.e. out of the "
     "52411-cell ground grid and into the 9324-cell high-altitude grid. InMAP has "
     "a latent defect here: sr.Reader.layerFracs clamps the emission into SR layer "
-    "2 (correct, layers 3..26 all clamp), but the horizontal index it pairs with "
+    "2 (correct — every model layer above 6 clamps), but the horizontal index it pairs with "
     "that layer is sr.indices[c], which srreader.go resets to 0 at every layer "
     "boundary. For a cell in layer >= 8 that index is a position in the COARSE "
     "9324-cell grid, and Reader.source then reinterprets it as a position in the "
@@ -140,13 +170,22 @@ EXPECT = {
                    "NH3": 25012.479214860767, "SOx": 1571216.8812541936,
                    "PM25": 140822.70985515337},
     "ppl_sha256": "6f784d7e66f63872901126dabb2dd7354a96cdcd3d4585b2f52d20b6105a875b",
+    # Record counts by LOWER SR layer. Not a partition of mass: a record whose
+    # model layer is 1, 2, 4 or 5 is split across sr_lower and sr_lower + 1.
+    "sr_lower_hist": [32280, 9725, 1645],
     # Percent of each pathway's mass landing in SR layer 0/1/2, to 0.1 pt.
+    # These moved a long way when the document switched from the clamp
+    # `sr_layer = min(plume_layer, 2)` — which followed the zarr's corrupt
+    # `layers = [0, 1, 2]` and shoved ~90% of everything into SR layer 2 — to
+    # sr.Reader.layerFracs over the authoritative [0, 3, 6]. SOx used to read
+    # 0.5/4.3/95.2 here and now reads 12.7/51.2/36.1; the mass is the same, the
+    # placement is not.
     "sr_split_pct": {
-        "VOC":  [6.3, 13.1, 80.5],
-        "NOx":  [3.1, 5.3, 91.5],
-        "NH3":  [12.3, 6.6, 81.2],
-        "SOx":  [0.5, 4.3, 95.2],
-        "PM25": [3.5, 5.8, 90.7],
+        "VOC":  [26.1, 54.4, 19.5],
+        "NOx":  [22.4, 53.5, 24.1],
+        "NH3":  [36.9, 54.7, 8.4],
+        "SOx":  [12.7, 51.2, 36.1],
+        "PM25": [21.9, 51.9, 26.2],
     },
 }
 
@@ -294,13 +333,15 @@ def containing_cell(W, S, E, N, x, y, rep: Report):
 # ASME plume rise
 # ---------------------------------------------------------------------------
 def plume_layers(cache, cell, hs, ds, Ts, vs, rep: Report):
-    """ctessum/atmos ASMEPrecomputed + inmap IsPlumeIn + sr layerFracs clamp.
+    """ctessum/atmos ASMEPrecomputed + inmap IsPlumeIn + sr.Reader.layerFracs.
 
-    Returns (stack_layer, plume_height, plume_layer, sr_layer, branch) where
-    plume_layer == 8 is the sentinel "at or above the top of model layer 7"
-    (InMAP's plumerise.ErrAboveModelTop, on a column truncated at layer 7 —
-    harmless for the SR answer because model layers 3..26 all clamp to SR
-    layer 2 anyway).
+    Returns (stack_layer, plume_height, plume_layer, weights, sr_lower, branch)
+    where `plume_layer == 8` is the sentinel "at or above the top of model layer
+    7" (InMAP's plumerise.ErrAboveModelTop, on a column truncated at layer 7 —
+    harmless for the SR answer because every model layer above SR_MODEL_LAYERS
+    [-1] gets the same weights), `weights` is a (3, R) array of the per-record
+    SR-layer shares and `sr_lower` is the integer index of the lower layer each
+    record's mass goes to.
     """
     def col(a, l):
         return a[l * NS:(l + 1) * NS]
@@ -373,13 +414,59 @@ def plume_layers(cache, cell, hs, ds, Ts, vs, rep: Report):
     # A zero stack height skips plume rise entirely and stays in layer 0.
     plume_layer[hs == 0] = 0
 
-    # layerFracs with sr.layers == [0,1,2]: an exact match returns that layer;
-    # anything above returns len(layers)-1 == 2 with an AboveTopErr.
-    sr_layer = np.minimum(plume_layer, 2)
+    # ---- sr.Reader.layerFracs, with sr.layers == SR_MODEL_LAYERS ----------
+    #
+    #   for i := range sr.layers            { if c.Layer == sr.layers[i]  -> {i}, {1} }
+    #   for i := range sr.layers[:len-1]    { if sr.layers[i] < c.Layer < sr.layers[i+1] {
+    #                                             below := layerHeights[sr.layers[i]]
+    #                                             above := layerHeights[sr.layers[i+1]]
+    #                                             frac  := (plumeHeight - below)/(above - below)
+    #                                             -> {i, i+1}, {frac, 1 - frac} } }
+    #   if c.Layer > sr.layers[len-1]       { -> {len-1}, {1}, AboveTopErr }
+    #
+    # `layerHeights` comes from sr.d.VerticalProfile, which fills
+    # `height[i] = c.LayerHeight + c.Dz/2.` — CELL-CENTRE heights, not layer
+    # bottoms. Getting that wrong is worth ~0.4% on the national total.
+    #
+    # THE INTERPOLATION IS INVERTED: the LOWER layer gets `frac`, so a HIGHER
+    # plume puts MORE weight on the LOWER layer. That is an InMAP bug. It
+    # conserves mass, and this oracle reproduces it rather than fixing it,
+    # because the question it answers is what InMAP computes.
+    #
+    # Every model layer above the top entry gets the same weights as an exact
+    # match on it, so capping the model layer there loses nothing — which is
+    # exactly the saturation isrm.esm's `plume_model_layer` performs.
+    top = SR_MODEL_LAYERS[-1]
+    M = np.minimum(plume_layer, top)
+
+    def cent(l):
+        """Cell-CENTRE height of model layer l over each record's source cell."""
+        return col(LH, l)[s] + 0.5 * col(Dz, l)[s]
+
+    weights = np.zeros((3, R))
+    sr_lower = np.zeros(R, dtype=np.int64)
+    for i in range(len(SR_MODEL_LAYERS)):
+        L = SR_MODEL_LAYERS[i]
+        exact = M == L if L != top else M >= L
+        weights[i][exact] = 1.0
+        sr_lower[exact] = i
+    for i in range(len(SR_MODEL_LAYERS) - 1):
+        lo, hi = SR_MODEL_LAYERS[i], SR_MODEL_LAYERS[i + 1]
+        between = (M > lo) & (M < hi)
+        below, above = cent(lo), cent(hi)
+        span = above - below
+        f = (plume_height - below) / np.where(span == 0, 1.0, span)
+        weights[i][between] = f[between]
+        weights[i + 1][between] = 1.0 - f[between]
+        sr_lower[between] = i
+    dev = float(np.max(np.abs(weights.sum(axis=0) - 1.0))) if R else 0.0
+    rep.check(dev <= 1e-12, "plume/weights-sum-to-one",
+              f"max |w0+w1+w2 - 1| = {dev} — layerFracs conserves mass, so a "
+              "record's weights must sum to 1")
 
     branch = {"momentum": int(mom.sum()), "stable_buoyant": int(stable.sum()),
               "unstable_buoyant": int(unstable.sum()), "no_buoyancy": int(none.sum())}
-    return stack_layer, plume_height, plume_layer, sr_layer, branch
+    return stack_layer, plume_height, plume_layer, weights, sr_lower, branch
 
 
 # ---------------------------------------------------------------------------
@@ -426,8 +513,39 @@ def main(argv=None) -> int:
         same = all(np.array_equal(a[:NS], a[l * NS:(l + 1) * NS]) for a in (W, S, E, N))
         rep.check(same, f"grid/L{l}-matches-L0",
                   "model layers 0..7 must share a byte-identical horizontal grid")
+    # `layers` is READ ONLY TO BE REPORTED. This oracle interpolates on the
+    # DECLARED SR_MODEL_LAYERS, because the store's copy is the corrupt arange.
+    # The check that used to live here asserted `layers == [0, 1, 2]` — i.e. it
+    # asserted the corruption, and would have gone green forever while the
+    # physics was wrong. Inverted, it is two checks:
+    #   * the layers this oracle actually USES are never the corrupt arange —
+    #     a tripwire on the constant, so a future edit that "simplifies"
+    #     SR_MODEL_LAYERS back to the store's value fails here rather than
+    #     silently returning the old wrong answer;
+    #   * the store's own value is one of the two states we have evidence for.
+    #     Anything else means something changed upstream and is a hard failure,
+    #     not a note.
+    # The store serving [0, 1, 2] is therefore reported loudly and recorded in
+    # the emitted record (grid.sr_layers_in_store), never assumed.
     srl = rd(cache, "layers", "<i4")  # zarr dtype for `layers` is <i4
-    rep.check(srl.tolist() == [0, 1, 2], "sr/layers", f"got {srl.tolist()}")
+    store_layers = srl.tolist()
+    rep.check(SR_MODEL_LAYERS != SR_LAYERS_CORRUPT, "sr/layers-not-the-arange",
+              "the SR model layers this oracle interpolates on are the zarr's "
+              "corrupt arange [0,1,2] — that is the bug, not the baseline")
+    rep.check(store_layers in (SR_LAYERS_CORRUPT, SR_MODEL_LAYERS),
+              "sr/layers-store-state",
+              f"the store serves layers = {store_layers}, which is neither the "
+              f"known-corrupt arange {SR_LAYERS_CORRUPT} nor the authoritative "
+              f"{SR_MODEL_LAYERS} — something changed upstream; find out what "
+              "before trusting anything downstream of it")
+    if store_layers == SR_LAYERS_CORRUPT:
+        print(f"NOTE: the store still serves the corrupt `layers` = "
+              f"{store_layers}; interpolating on the declared "
+              f"{SR_MODEL_LAYERS} instead (see SR_MODEL_LAYERS).")
+    elif store_layers == SR_MODEL_LAYERS:
+        print(f"NOTE: the store now serves `layers` = {store_layers} — the "
+              "zarr conversion bug has been FIXED upstream and the declared "
+              "value could be read from the store again.")
 
     W, S, E, N = W[:NS], S[:NS], E[:NS], N[:NS]
 
@@ -477,7 +595,7 @@ def main(argv=None) -> int:
                   f"{ppl_hash} != the document's ppl digest")
 
     # ---- plume rise ------------------------------------------------------
-    stack_layer, ph, plume_layer, sr_layer, branch = plume_layers(
+    stack_layer, ph, plume_layer, weights, sr_lower, branch = plume_layers(
         cache, cell, hs, ds, Ts, vs, rep)
 
     pos = hs > 0
@@ -492,6 +610,9 @@ def main(argv=None) -> int:
                   f"{branch} != {EXPECT['branch']}")
         rep.check(abs(round(float(ph.max()), 1) - EXPECT["max_plume_height_m"]) < 5e-2,
                   "plume/max_height", f"{ph.max()} != ~{EXPECT['max_plume_height_m']}")
+        sr_hist = np.bincount(sr_lower, minlength=3).tolist()
+        rep.check(sr_hist == EXPECT["sr_lower_hist"], "plume/sr_lower_hist",
+                  f"{sr_hist} != {EXPECT['sr_lower_hist']}")
 
     # ---- the above-layer-7 group (InMAP's latent defect) -----------------
     above = plume_layer >= N_GROUND_LAYERS
@@ -507,7 +628,9 @@ def main(argv=None) -> int:
     for k, name in enumerate(PATHWAYS):
         m = pol == k
         tot = float(em[m].sum())
-        by = [float(em[m & (sr_layer == L)].sum()) for L in (0, 1, 2)]
+        # A record split across two SR layers contributes a SHARE to each, so
+        # this is a weighted sum, not a partition of the records.
+        by = [float((em[m] * weights[L][m]).sum()) for L in (0, 1, 2)]
         pathways[name] = {
             "sr_name": PATHWAY_SR_NAME[name],
             "emis_sum": tot,
@@ -546,18 +669,46 @@ def main(argv=None) -> int:
             "n_cells_high": N_HIGH,
             "n_model_layers": N_LAYERS,
             "n_ground_grid_layers": N_GROUND_LAYERS,
-            "sr_layers": srl.tolist(),
+            # Two different things, deliberately reported side by side.
+            "sr_layers_used": list(SR_MODEL_LAYERS),
+            "sr_layers_in_store": store_layers,
+            "sr_layers_note": (
+                "sr_layers_used is DECLARED (isrm_v1.2.1.ncf on Zenodo, and "
+                "isrm.esm's SR_MODEL_L1/SR_MODEL_L2 metaparameters). "
+                "sr_layers_in_store is what isrm_v1.2.1.zarr serves, which is a "
+                "machine-generated arange that displaced the real array during "
+                "the zarr conversion; it is reported, never used."),
         },
         "n_rec": n_rec,
         "n_emitting_cells": len(emitting),
         "n_records_outside_grid": n_outside,
         "ppl": {"count": len(ppl_ids), "sha256": ppl_hash},
-        "sr_layer": {
-            "sha256": int_seq_sha256(sr_layer),
-            "encoding": ("sha256 over the per-record SR layer as ASCII decimals "
-                         "joined by ',' in record order (contract/results.py "
-                         "int_seq_sha256)"),
-            "histogram": np.bincount(sr_layer, minlength=3).tolist(),
+        "sr_lower": {
+            "sha256": int_seq_sha256(sr_lower),
+            "encoding": ("sha256 over the per-record LOWER SR layer as ASCII "
+                         "decimals joined by ',' in record order "
+                         "(contract/results.py int_seq_sha256)"),
+            "histogram": np.bincount(sr_lower, minlength=3).tolist(),
+            "note": ("the lower of the at most two SR layers layerFracs charges "
+                     "the record to; the upper, when there is one, is always "
+                     "this + 1. It replaces the old per-record `sr_layer`, "
+                     "which stopped describing the model once a record could be "
+                     "split across two layers."),
+        },
+        "weights": {
+            "count": n_rec,
+            "max_sum_error": float(np.max(np.abs(weights.sum(axis=0) - 1.0)))
+            if n_rec else 0.0,
+            **{"w_sr%d" % L: field_summary(weights[L]) for L in (0, 1, 2)},
+            "note": ("sr.Reader.layerFracs's per-record shares, interpolated on "
+                     "CELL-CENTRE heights (sr.d.VerticalProfile fills "
+                     "height[i] = c.LayerHeight + c.Dz/2), with the LOWER layer "
+                     "taking `frac` — InMAP's inverted interpolation, "
+                     "reproduced rather than corrected. FLOATS, so these are "
+                     "compared within RTOL_FIELD and their sha256 is "
+                     "informative, not asserted: they descend from "
+                     "plume_height, whose cube roots differ by an ulp between "
+                     "languages."),
         },
         "stack_layer": {
             "n_zero_height": n_zero,
@@ -618,7 +769,11 @@ def main(argv=None) -> int:
           f"({100 * above_mass / em_total_all if em_total_all else 0.0:.2f}% "
           f"of emitted mass) — "
           f"clamped to SR layer 2 at the correct source cell")
-    print(f"sr_layer sha256: {rec['sr_layer']['sha256']}")
+    print(f"lower-SR-layer histogram: {rec['sr_lower']['histogram']}")
+    print(f"sr_lower sha256: {rec['sr_lower']['sha256']}")
+    print("weight sums (w_sr0/w_sr1/w_sr2): " + " / ".join(
+        "%.9f" % rec["weights"]["w_sr%d" % L]["sum"] for L in (0, 1, 2)) +
+        "   max|Σw - 1| = %g" % rec["weights"]["max_sum_error"])
 
     ok = rep.close()
     os.makedirs(os.path.dirname(os.path.abspath(args.out)) or ".", exist_ok=True)

@@ -4,7 +4,7 @@
     "emis_sum": 2747.1340564,
     "inmap_behaviour": "clamp to SR layer 2 but keep the 9324-cell high-layer index, reinterpreted against the 52411-cell ground grid",
     "n_rec": 286,
-    "note": "Records whose plume rises above the top of model layer 7 \u2014 i.e. out of the 52411-cell ground grid and into the 9324-cell high-altitude grid. InMAP has a latent defect here: sr.Reader.layerFracs clamps the emission into SR layer 2 (correct, layers 3..26 all clamp), but the horizontal index it pairs with that layer is sr.indices[c], which srreader.go resets to 0 at every layer boundary. For a cell in layer >= 8 that index is a position in the COARSE 9324-cell grid, and Reader.source then reinterprets it as a position in the 52411-cell ground grid \u2014 so these emissions land on the wrong source cell. THIS ORACLE IMPLEMENTS THE CORRECT BEHAVIOUR: clamp to SR layer 2 at the source cell the emission actually came from. Any residual disagreement with the blog's published deathsK/deathsL is attributable to this group.",
+    "note": "Records whose plume rises above the top of model layer 7 \u2014 i.e. out of the 52411-cell ground grid and into the 9324-cell high-altitude grid. InMAP has a latent defect here: sr.Reader.layerFracs clamps the emission into SR layer 2 (correct \u2014 every model layer above 6 clamps), but the horizontal index it pairs with that layer is sr.indices[c], which srreader.go resets to 0 at every layer boundary. For a cell in layer >= 8 that index is a position in the COARSE 9324-cell grid, and Reader.source then reinterprets it as a position in the 52411-cell ground grid \u2014 so these emissions land on the wrong source cell. THIS ORACLE IMPLEMENTS THE CORRECT BEHAVIOUR: clamp to SR layer 2 at the source cell the emission actually came from. Any residual disagreement with the blog's published deathsK/deathsL is attributable to this group.",
     "oracle_behaviour": "clamp to SR layer 2 at the correct source cell",
     "sr_layer_assigned": 2
   },
@@ -23,10 +23,16 @@
     "n_cells_high": 9324,
     "n_ground_grid_layers": 8,
     "n_model_layers": 27,
-    "sr_layers": [
+    "sr_layers_in_store": [
       0,
       1,
       2
+    ],
+    "sr_layers_note": "sr_layers_used is DECLARED (isrm_v1.2.1.ncf on Zenodo, and isrm.esm's SR_MODEL_L1/SR_MODEL_L2 metaparameters). sr_layers_in_store is what isrm_v1.2.1.zarr serves, which is a machine-generated arange that displaced the real array during the zarr conversion; it is reported, never used.",
+    "sr_layers_used": [
+      0,
+      3,
+      6
     ]
   },
   "kind": "plume_oracle",
@@ -40,15 +46,15 @@
         "n_rec": 43
       },
       "by_sr_layer": [
-        937.6656899000001,
-        0.0,
-        1268.58056825
+        1124.0953796383235,
+        511.090876081561,
+        571.0600024301157
       ],
       "emis_sum": 2206.2462581499994,
       "frac_by_sr_layer": [
-        0.4250049995263265,
-        0.0,
-        0.5749950004736738
+        0.5095058520715224,
+        0.23165631406447135,
+        0.25883783386400655
       ],
       "n_rec": 293,
       "sr_name": "pNH4"
@@ -59,15 +65,15 @@
         "n_rec": 63
       },
       "by_sr_layer": [
-        2138.879683,
-        334.05686499999996,
-        99198.76278399999
+        9171.12045697105,
+        35505.325309878775,
+        56995.253565150175
       ],
       "emis_sum": 101671.69933199999,
       "frac_by_sr_layer": [
-        0.021037119444769745,
-        0.0032856425848570374,
-        0.9756772379703732
+        0.09020327699081297,
+        0.34921542123476523,
+        0.5605813017744219
       ],
       "n_rec": 431,
       "sr_name": "pNO3"
@@ -78,15 +84,15 @@
         "n_rec": 63
       },
       "by_sr_layer": [
-        1179.51256693,
-        56.4859485,
-        4833.4068101
+        2188.547577131652,
+        1803.479351643649,
+        2077.378396754699
       ],
       "emis_sum": 6069.4053255300005,
       "frac_by_sr_layer": [
-        0.19433741918150788,
-        0.009306669347390712,
-        0.7963559114711014
+        0.3605868218960217,
+        0.2971426778926094,
+        0.34227050021136884
       ],
       "n_rec": 433,
       "sr_name": "PrimaryPM25"
@@ -97,15 +103,15 @@
         "n_rec": 59
       },
       "by_sr_layer": [
-        129.80798470000002,
-        97.14453230000001,
-        98945.66246410001
+        1500.6767887595197,
+        24549.226926939937,
+        73122.71126540055
       ],
       "emis_sum": 99172.61498109999,
       "frac_by_sr_layer": [
-        0.0013089095686822257,
-        0.0009795499727269822,
-        0.997711540458591
+        0.015131967519919829,
+        0.24754038130000355,
+        0.7373276511800767
       ],
       "n_rec": 411,
       "sr_name": "pSO4"
@@ -116,15 +122,15 @@
         "n_rec": 58
       },
       "by_sr_layer": [
-        240.5541216,
-        27.278206739999998,
-        2369.0877430499995
+        611.9401161272075,
+        801.6846566838299,
+        1223.2952985789627
       ],
       "emis_sum": 2636.92007139,
       "frac_by_sr_layer": [
-        0.09122541263573328,
-        0.010344722631513375,
-        0.8984298647327532
+        0.23206623619980846,
+        0.3040231159760704,
+        0.46391064782412117
       ],
       "n_rec": 432,
       "sr_name": "SOA"
@@ -208,14 +214,15 @@
       "2016fd_cb6_16j/inputs/ptegu/egunoncems_2016v2_POINT_20180327_HCLCLaug_05apr2018_v0.csv"
     ]
   },
-  "sr_layer": {
-    "encoding": "sha256 over the per-record SR layer as ASCII decimals joined by ',' in record order (contract/results.py int_seq_sha256)",
+  "sr_lower": {
+    "encoding": "sha256 over the per-record LOWER SR layer as ASCII decimals joined by ',' in record order (contract/results.py int_seq_sha256)",
     "histogram": [
-      757,
-      93,
-      1150
+      1179,
+      396,
+      425
     ],
-    "sha256": "574b3c3fb70152ac44cdb45ca7ae836d1b6e389f37b531529432e5ff9fbc22fe"
+    "note": "the lower of the at most two SR layers layerFracs charges the record to; the upper, when there is one, is always this + 1. It replaces the old per-record `sr_layer`, which stopped describing the model once a record could be split across two layers.",
+    "sha256": "2d514e98fec51b7a661ee2a4281e9cfbdfb38c63aaaeee96a2e933cc78977fc8"
   },
   "stack_layer": {
     "histogram": [
@@ -237,5 +244,109 @@
   "units": {
     "emissions": "short tons/yr",
     "heights": "m"
+  },
+  "weights": {
+    "count": 2000,
+    "max_sum_error": 0.0,
+    "note": "sr.Reader.layerFracs's per-record shares, interpolated on CELL-CENTRE heights (sr.d.VerticalProfile fills height[i] = c.LayerHeight + c.Dz/2), with the LOWER layer taking `frac` \u2014 InMAP's inverted interpolation, reproduced rather than corrected. FLOATS, so these are compared within RTOL_FIELD and their sha256 is informative, not asserted: they descend from plume_height, whose cube roots differ by an ulp between languages.",
+    "w_sr0": {
+      "max": 1.0,
+      "min": 0.0,
+      "sample": [
+        0.734304611326606,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.1278757729699285,
+        0.5155123783923212,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.6382053727588969,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        0.0,
+        0.0,
+        0.3230195767293485,
+        0.0
+      ],
+      "sha256": "abb4408fc2658eab5742722810b441dcee817c730059c14e29860394e78ccb1b",
+      "sum": 971.8580501272759
+    },
+    "w_sr1": {
+      "max": 1.0,
+      "min": 0.0,
+      "sample": [
+        0.26569538867339404,
+        0.0,
+        1.0,
+        1.0,
+        0.0,
+        0.8721242270300715,
+        0.4844876216076788,
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.3617946272411031,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        0.6769804232706516,
+        0.0
+      ],
+      "sha256": "b358ec4520628c6d123515c24a05dac30d40a31b7ba85cf9bb6301a279e9e10c",
+      "sum": 524.4316026862848
+    },
+    "w_sr2": {
+      "max": 1.0,
+      "min": 0.0,
+      "sample": [
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "sha256": "22610f3741e1b1264f5e466d2737cee2d4adf8b98cd48e79ba508d362acb963f",
+      "sum": 503.71034718644097
+    }
   }
 }
