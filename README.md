@@ -75,37 +75,65 @@ SR cache, 4,130 s observed eval, 19.2 GiB peak. Python cannot load this
 document today and Rust has only run it at reduced scale — see
 [What runs today](#what-runs-today).
 
-Plume rise should have removed about 8% and removed about 19%. Interpolating
-between the two rows above, the blog sits at **40.8% of our elevation
-effect**: InMAP elevates roughly 40% as much mass as we do, or elevates it to
-lower layers. That is structural, about a layer's worth — not an accumulation
-of edge cases.
+### The published totals are not reachable by any layer assignment
 
-**What is verified is that the document computes what we specified.** At full
-scale its per-record layer assignment matches
-[`contract/plume_oracle.py`](contract/plume_oracle.py) — an independent NumPy
-implementation written from InMAP's Go source rather than from this document —
-*exactly*: `sr_layer` sha256 `808e0971…`, histogram `[12108, 9155, 22387]`,
-`stack_layer` sha256 matching, and all fifteen per-pathway per-layer emission
-masses agreeing to ≤ 2.1e-16. Julia and Rust agree with each other and with a
-from-scratch numpy contraction. So the open question is not whether the
-implementation matches the specification; it is whether the **specification
-matches InMAP**, since a misreading of the Go source would be inherited by both.
+Plume rise should have removed about 8% and removed about 19%. Chasing that
+produced a stronger result than a corrected number: **the tutorial's published
+pair cannot be produced from `isrm_v1.2.1` by InMAP's own algorithm**, whatever
+the plume rise does.
 
-That is under investigation. Two leads: the SR store carries no per-cell
-`Layer` array, so InMAP reads `Cell.Layer` from its NetCDF while this document
-reconstructs the layer from cell ordering; and `IsPlumeIn` builds its column
-from cumulative `Dz` (layer tops) while `layerFracs` uses `VerticalProfile`,
-which returns cell-*centre* heights — a substitution anywhere in that chain
-moves mass down a layer, which is the right magnitude. Unexplained and
-possibly a symptom: the oracle's maximum plume height is **9,437 m**, which is
-not a physical plume from a power-plant stack.
+Deaths are near-linear in the layer assignment, so the whole space can be
+enumerated. Full scale, contracted directly off the zarr with no engine
+(reproducing the engine to 2.5e-14):
 
-One hypothesis is already refuted arithmetically. If InMAP had failed to bind
-the stack columns at all — the blog writes its emissions through a shapefile
-with lowercase `height`/`diam`/`temp`/`velocity` against `EmisRecord`'s
-`Height`/`Diam`/`Temp`/`Velocity` — every source would be ground level and it
-would report `7524.92`. It reports `6928.96`. InMAP is doing plume rise.
+| assignment | deathsK | deathsL |
+|---|---|---|
+| every record → SR layer 0 | 7524.918950 | 16979.632407 |
+| every record → SR layer 1 | 7145.784995 | 16115.419710 |
+| every record → SR layer 2 | 5803.346207 | 13080.649455 |
+| this document | 6063.777261 | 13668.309908 |
+| this document + InMAP's high-plume index defect | 6088.681918 | 13724.286771 |
+| every record at its own stack's layer (ΔH ≡ 0) | 6674.494133 | 15048.568912 |
+| **ceiling: the best any admissible assignment can do** | **6697.553122** | 15100.721913 |
+| blog (InMAP) | **6928.959583** | **15623.924632** |
+
+InMAP's ΔH is non-negative in every branch of `calcDeltaHPrecomputed`, and
+`findLayer` is monotone in height, so **every record must land at a layer at or
+above its own stack's layer**. That bounds `deathsK` at `6697.55`. The published
+`6928.96` is **3.46% above that ceiling**, and `deathsL` is 3.5% above its
+ceiling too. Reaching it would require emitting *below* the layer the stack sits
+in, which InMAP's code cannot do. Even ΔH ≡ 0 — no plume rise at all, every
+record at its stack's own layer — gives `6674.49`, still 3.67% short.
+
+So at least ~3.5% of the discrepancy is a **magnitude** difference, not a
+vertical one, and the vertical part cannot account for the rest. A mixture on
+the L0→L2 axis does hit `6928.96` (α = 0.3455 against our 0.849), and it
+satisfies the independent `deathsL` constraint to 0.018% — so our concentration
+fields are not grossly wrong in pattern or scale — but that mixture is not
+admissible for the reason above.
+
+Two candidate mechanisms were closed out by reading InMAP's source rather than
+guessing. `layerFracs`'s cell-centre interpolation branch is **dead code** for
+this matrix (`sr.layers` is contiguous `[0,1,2]`, so every cell takes either the
+exact-match or the above-top branch), and `sr/srreader.go` is byte-identical
+between the last commit before the blog and master. `IsPlumeIn`'s cumulative-`Dz`
+column equals the store's `LayerHeight` exactly, so bottoms-versus-cumsum is a
+distinction without a difference. The 9,437 m maximum plume height is a genuine
+ASME output that InMAP permits — its real column runs to model layer 26 — and
+the records whose plumes leave the ground grid are the same 0.43% of mass either
+way.
+
+**The high-plume source-index defect is worth 24.90 deaths (+0.41%), not 865.**
+An earlier version of this README attributed the whole residual to it. That was
+wrong, and it is why the attribution is now measured rather than argued.
+
+The likeliest remaining explanation is the matrix itself: the blog predates
+`isrm_v1.2.1`, and today's zarr conversion is known to be lossy in at least one
+respect — it dropped the per-cell `Layer` variable that InMAP's NetCDF must have
+carried, since `InsertCell`, `setNeighbors`, `VerticalProfile` and `sr.indices`
+all key on it. Settling it is now a one-parameter question about the matrix, not
+about the physics: fetch one SR row for a known source cell from the original
+`.ncf` and compare it against the same row in the zarr.
 
 > **An earlier full-scale total published here (`6983.9385617781645`, +0.79%)
 > was VOID** and its apparent agreement was a coincidence. It came from an
