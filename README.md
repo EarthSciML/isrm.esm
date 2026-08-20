@@ -173,12 +173,19 @@ was false. It is retracted, and `contract/compare_results.py`'s
 One incidental InMAP bug found on the way, which this document must match to
 agree: `layerFracs` returns `{frac, 1-frac}` for `{lower, upper}` with
 `frac = (plumeHeight − below)/(above − below)`, so a **higher** plume gets
-**more** weight on the **lower** SR layer. The interpolation is inverted. It
-conserves mass, so it does not affect the reconciliation, and the document
-reproduces it rather than correcting it — silently fixing it would make this
-document disagree with the service for a reason nobody reading the totals
-could see. Four of the document's descriptions say so, because it will look
-like a bug to the next reader.
+**more** weight on the **lower** SR layer. The interpolation is inverted, and
+the document reproduces it rather than correcting it — silently fixing it would
+make this document disagree with the service for a reason nobody reading the
+totals could see. Four of the document's descriptions say so, because it will
+look like a bug to the next reader.
+
+It conserves mass, but conserving mass is not the same as leaving the total
+alone. **Measured at full scale: correcting the interpolation gives 7022.724781
+/ 15835.993596, so the defect biases the published totals low by +1.249% /
++1.253%** — 86.6 and 195.9 deaths a year. It relocates 6.25% of emitted mass,
+against 0.43% for the source-index defect below, which makes it the larger of
+InMAP's two plume-rise bugs and the only one baked into the tutorial's numbers.
+See `BUGS.md` §5.2 for the per-layer breakdown and why deaths move up.
 
 `contract/`'s assertion that `layers == [0,1,2]` was asserting the corruption.
 It is inverted now: the oracle checks that the layers it uses are never the
@@ -239,13 +246,12 @@ The three emitters agree on the wire format too: `results.jl`, `results.py` and
 digests from the same input, and all three refuse a non-integral value rather
 than rounding it away.
 
-What is **not** yet closed: no full-scale run of the layerFracs document has
-been made, so the full-scale `sr_lower` digest has not been checked against
-`contract/records/plume_oracle.json`'s
-`d38ba2fb042f7e793134670e954d306987a8d9b17fca20975c23d36a9a134799`, and no
-tolerance against the published totals has been measured. The next full-scale
-run closes both, at no extra cost — the block comes off observeds the run
-already evaluates.
+Both are now closed by the full-scale run: it reports
+`sr_lower` =
+`d38ba2fb042f7e793134670e954d306987a8d9b17fca20975c23d36a9a134799`, matching
+`contract/records/plume_oracle.json`, and lands +0.103% from the published
+totals — a deviation fully accounted for by the one defect this document
+deliberately does not reproduce (`BUGS.md` §5.1).
 
 ## Why `ppl` is the number that matters
 

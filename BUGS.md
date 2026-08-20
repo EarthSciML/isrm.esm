@@ -259,10 +259,42 @@ sources at `LayerHeight + Dz/2`). But it systematically anti-correlates height
 with placement, and it is not a rare path: **~61% of emitted mass** in this
 inventory goes through it (29.6% in model layers 1–2, 31.7% in layers 4–5).
 
-**Effect here: unmeasured, and this document reproduces it**, because matching
-InMAP's published numbers requires matching its arithmetic. Four variable
-descriptions say so, to stop anyone silently "correcting" it. If InMAP fixes
-this, the tutorial's published totals change.
+**Effect here: +86.618439 deaths (+1.249%) Krewski, +195.913322 (+1.253%)
+Lepeule — the tutorial's published totals are biased low by that much.**
+MEASURED at full scale 2026-08-20, by running this document twice through the
+Rust binding against the same SR matrix, with only the four AST nodes that place
+`frac_lo`/`frac_hi` swapped:
+
+| | `sum(deathsK)` | `sum(deathsL)` |
+|---|---|---|
+| tutorial, published | 6928.959583 | 15623.924632 |
+| this document, reproducing the defect | 6936.106343 | 15640.080273 |
+| same document, interpolation corrected | 7022.724781 | 15835.993596 |
+
+Mass conservation is not the same as an unbiased total, which is what an earlier
+revision of this section assumed. The defect relocates **192,918 t/yr — 6.25% of
+emitted mass**, 14× more than §5.1 and, unlike §5.1, fully baked into the
+published numbers. It is the larger of InMAP's two plume-rise defects on both
+counts.
+
+The direction is not the one "inverted" suggests. Correcting it moves mass
+*inward* toward the middle SR layer from both sides — L1 +192 kt, L0 −54 kt,
+L2 −138 kt — because giving each split record more weight on the layer *farther*
+from its plume pushes mass outward from L1 in both directions. Deaths rise
+because the L2→L1 flow (138 kt, mostly SOx and NOx) outweighs the L0→L1 flow
+(54 kt): more mass ends up nearer the surface, where it reaches people. Neither
+`ppl` (1,520 emitting cells) nor the `sr_lower` assignment changes — only how a
+split record's mass is divided between two layers.
+
+Cross-checked before any SR contraction: the corrected run's own weight sums and
+`sr_lower` digest (23532.168795934616 / 17289.645044880024 / 2828.1861591853617,
+`d38ba2fb…`) match an independently patched NumPy oracle exactly, so the engine
+and the reference implementation agree on what "corrected" means.
+
+**This document still reproduces the defect**, because matching InMAP's published
+numbers requires matching its arithmetic. Four variable descriptions say so, to
+stop anyone silently "correcting" it. If InMAP fixes this, the tutorial's
+published totals move by the amounts above.
 
 ---
 
