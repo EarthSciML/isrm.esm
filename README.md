@@ -131,6 +131,18 @@ deliberately not read from the store. Two consequences, both now implemented:
   `Dz` is now declared alongside the other meteorology arrays for exactly
   this.
 
+Three other candidate explanations for that residual were on the table and are
+now moot at reduced scale, since there is no residual left to explain. One of
+them was cheap enough to close outright: InMAP's `CellIntersections` returns
+0.5/0.25 fractions for a point that lands exactly on a cell boundary, and this
+document's half-open `[W,E) × [S,N)` containment does not. Every ground-grid
+edge is a multiple of 1 km in LCC metres, so a point on an edge needs
+`x mod 1000 == 0`; **none of the 43,650 records satisfies it**, in either axis,
+and the closest approach is 2.0 cm. The tie-break case never arises on this
+inventory. The other two — the `end = nCells-1` bound in `Reader.get`, and
+EPSG:4269→LCC reprojection versus the document's direct `lcc_forward` — are
+untested and would have to be worth less than 9e-9 on the first 200 records.
+
 An earlier revision of this README argued the published totals were
 *unreachable* — 3.46% above a ceiling implied by non-negative plume rise. That
 argument was sound given `layers = [0,1,2]` and worthless because the premise
