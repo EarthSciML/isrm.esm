@@ -12,10 +12,15 @@ The estimate moved like this:
 |---|---|---|
 | every record at ground level (before this work) | 7524.918846 | +8.60% |
 | plume rise, reading the store's `layers` | 6063.777261 | −12.49% |
-| plume rise, `layerFracs` over the true `[0,3,6]` | **6936.106343** | **+0.10%** |
+| plume rise, `layerFracs` over the true `[0,3,6]` | 6936.106343 | +0.10% |
 | the InMAP tutorial, reproduced through its own service | 6928.959583 | — |
+| **what this document computes today — correct physics** | **7022.724781** | **+1.35%** |
 
-The remaining +0.10% is one deliberate difference, §5.1.
+The third row is the reproduction of InMAP, and its +0.10% residual is one
+deliberate difference (§5.1). The last row is what the document computes now:
+having demonstrated it could reproduce InMAP, it declines InMAP's other
+plume-rise defect too (§5.2). **The document is no longer a reproduction of the
+tutorial, and the tutorial's totals run about 1.35% low.**
 
 Two claims made during this work were **wrong and are retracted**: that the
 ~8.6% ground-level gap "is the plume rise" (it is not — most of it was the
@@ -27,7 +32,7 @@ because of it).
 
 ## 1. The one that dominated everything: a corrupt array in the published store
 
-**`s3://inmap-model/isrm_v1.2.1.zarr`, variable `layers`.** Not fixed yet — see
+**`s3://inmap-model/isrm_v1.2.1.zarr`, variable `layers`.** FIXED IN THE PUBLISHED STORE on 2026-08-20 (see §6) — was, at the time of writing,
 `REPAIR.md` once the patch lands; the fix needs write access to the bucket.
 
 `layers` holds the **model** layer indices the SR calculation was performed for.
@@ -226,8 +231,10 @@ is also why §2.1 went undetected until it did.
 
 ## 5. Defects in InMAP itself
 
-These are upstream and are **not** fixed here. The first is deliberately not
-reproduced; the second deliberately is.
+These are upstream and are **not** fixed in InMAP by this repo. Neither is
+reproduced here: `isrm.esm` states correct physics. §5.1 was never reproduced;
+§5.2 was, deliberately, until agreement with InMAP had been demonstrated, and
+was corrected on 2026-08-20.
 
 ### 5.1 High plumes are charged to the wrong source cell — not reproduced
 `sr/srreader.go` builds `sr.indices` by resetting a counter at every layer
@@ -243,7 +250,7 @@ records whose plume clears model layer 7, so the defect cannot fire — this
 document matches InMAP's live service to **8.9e-9**. At full scale, 654 records
 trigger it and the totals differ by exactly this.
 
-### 5.2 `layerFracs` interpolates backwards — reproduced deliberately
+### 5.2 `layerFracs` interpolates backwards — reproduced, then corrected
 ```go
 frac := (plumeHeight - below) / (above - below)
 return []int{i, i + 1}, []float64{frac, 1 - frac}, nil
@@ -291,10 +298,18 @@ Cross-checked before any SR contraction: the corrected run's own weight sums and
 `d38ba2fb…`) match an independently patched NumPy oracle exactly, so the engine
 and the reference implementation agree on what "corrected" means.
 
-**This document still reproduces the defect**, because matching InMAP's published
-numbers requires matching its arithmetic. Four variable descriptions say so, to
-stop anyone silently "correcting" it. If InMAP fixes this, the tutorial's
-published totals move by the amounts above.
+**As of 2026-08-20 this document CORRECTS the defect and no longer reproduces
+it.** The order matters and is the whole argument: agreement with InMAP was
+established *first* — 8.9e-9 against the live service on 200 records, +0.103% at
+full scale, the exact worth of the one defect already declined — and only then
+was the physics corrected. A document that diverged before it had ever agreed
+would be indistinguishable from one with a bug.
+
+So `isrm.esm` now declines **both** of InMAP's plume-rise defects, and computes
+**7022.724781 / 15835.993596**. It is no longer a reproduction of the tutorial
+and does not claim to be; `contract/compare_results.py` demotes the published
+totals to context and checks `CORRECTED_FULL` instead. Five variable
+descriptions now say why, where four used to say the opposite.
 
 ---
 
@@ -310,7 +325,21 @@ published totals move by the amounts above.
   So an out-of-spec document runs in four bindings and fails in one. Python's
   non-conformance is what caught §2.3. This needs a spec decision about which
   entry point owns §4.8.4, not an engine patch.
-* **The zarr repair** itself, which needs bucket write access.
+* ~~**The zarr repair** itself, which needs bucket write access.~~ **DONE
+  2026-08-20.** `s3://inmap-model/isrm_v1.2.1.zarr` was repaired in place: it
+  now serves `layers = [0, 3, 6]`, carries the restored per-cell `Layer`
+  variable, has `.zattrs` on all three SR arrays that lacked them, and declares
+  `fill_value: null` on all 70 arrays (§1's fourth defect — with the `.zattrs`
+  restored but `fill_value: 0` left in place, xarray would have masked every
+  genuine zero to NaN, so those two had to ship together). Root attribute
+  `store_version` is now `1.2.1+repair1`; every overwritten byte is backed up.
+  Verified against the live store: 39 checks, 0 failed, 0 skipped, plus an
+  independent anonymous xarray read.
+* A **rechunked and recompressed** copy was published alongside it as
+  `s3://inmap-model/isrm_v1.2.2.zarr` — same values, `[1, 5, 52411]` chunks and
+  zstd instead of `[1, 100, 52411]` and lz4, plus consolidated `.zmetadata` so
+  the store can be opened over plain HTTPS at all. See `RECHUNK.md` in the
+  repair kit for the measurements behind those choices.
 
 ---
 

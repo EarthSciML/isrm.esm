@@ -181,11 +181,11 @@ EXPECT = {
     # 0.5/4.3/95.2 here and now reads 12.7/51.2/36.1; the mass is the same, the
     # placement is not.
     "sr_split_pct": {
-        "VOC":  [26.1, 54.4, 19.5],
-        "NOx":  [22.4, 53.5, 24.1],
-        "NH3":  [36.9, 54.7, 8.4],
-        "SOx":  [12.7, 51.2, 36.1],
-        "PM25": [21.9, 51.9, 26.2],
+        "VOC":  [27.9, 55.6, 16.4],
+        "NOx":  [19.2, 60.3, 20.5],
+        "NH3":  [32.2, 62.1, 5.7],
+        "SOx":  [12.3, 57.0, 30.7],
+        "PM25": [18.8, 57.6, 23.6],
     },
 }
 
@@ -456,8 +456,11 @@ def plume_layers(cache, cell, hs, ds, Ts, vs, rep: Report):
         below, above = cent(lo), cent(hi)
         span = above - below
         f = (plume_height - below) / np.where(span == 0, 1.0, span)
-        weights[i][between] = f[between]
-        weights[i + 1][between] = 1.0 - f[between]
+        # InMAP's layerFracs returns {frac, 1-frac} for {lower, upper}, which
+        # gives a HIGHER plume MORE weight on the LOWER layer. That is inverted.
+        # This oracle interpolates the ordinary way, matching the document.
+        weights[i][between] = 1.0 - f[between]
+        weights[i + 1][between] = f[between]
         sr_lower[between] = i
     dev = float(np.max(np.abs(weights.sum(axis=0) - 1.0))) if R else 0.0
     rep.check(dev <= 1e-12, "plume/weights-sum-to-one",

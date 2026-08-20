@@ -14,8 +14,8 @@ The document is fully automatic — nothing model-shaped lives in the runners:
   Lambert conformal conic `X`/`Y` are observeds the engine evaluates at build
   time. No runner projects a coordinate.
 * **In-model plume rise.** The ASME plume-rise algorithm — stack layer,
-  buoyancy flux, the four-branch ΔH — and InMAP's `sr.Reader.layerFracs` on
-  top of it are stated in the document's own observeds, and each emission
+  buoyancy flux, the four-branch ΔH — and a corrected `sr.Reader.layerFracs`
+  on top of it are stated in the document's own observeds, and each emission
   record's mass is split across the SR emission layers its plume falls
   between. No runner computes a plume height; the shims do not contain the
   word ASME.
@@ -88,15 +88,29 @@ Full scale, Rust, against the live `s3://inmap-model/isrm_v1.2.1.zarr`:
 |---|---|---|---|
 | every record at ground level (before plume rise) | 7524.918846 | 16979.632171 | +8.60% |
 | plume rise, reading the store's corrupt `layers` | 6063.777261 | 13668.309908 | −12.49% |
-| **plume rise, `layerFracs` over the true `[0,3,6]`** | **6936.106343** | **15640.080273** | **+0.10%** |
+| plume rise, reproducing InMAP exactly | 6936.106343 | 15640.080273 | +0.10% |
 | the tutorial, reproduced through InMAP's own service | 6928.959583 | 15623.924632 | — |
+| **what this document computes — correct physics** | **7022.724781** | **15835.993596** | **+1.35%** |
 
-The remaining +0.10% is **one deliberate difference, cleanly isolated**. At
-`ISRM_FIRSTN=200` — a subset containing no record whose plume clears model
-layer 7 — this document matches InMAP's live service to **8.9e-9**. At full
-scale, 654 records do clear it, and InMAP charges those to the wrong source
-cell (a defect this document does not reproduce; see
-[`BUGS.md`](BUGS.md) §5.1). That accounts for +7.146760 deaths.
+Read those last two rows together, because the order they were produced in is
+the argument.
+
+**First, agreement.** The third row is this document reproducing InMAP,
+including a bug (below). Its +0.10% residual is one deliberate difference,
+cleanly isolated: at `ISRM_FIRSTN=200` — a subset containing no record whose
+plume clears model layer 7 — it matches InMAP's live service to **8.9e-9**. At
+full scale 654 records do clear it, and InMAP charges those to the wrong source
+cell ([`BUGS.md`](BUGS.md) §5.1), worth exactly +7.146760 deaths.
+
+**Then, correction.** Having shown it can compute what InMAP computes, the
+document declines InMAP's other plume-rise defect too — the inverted
+`layerFracs` interpolation ([`BUGS.md`](BUGS.md) §5.2), which misplaces 6.25% of
+emitted mass. That is the last row, and it is what `isrm.esm` computes today.
+**This document therefore no longer reproduces the tutorial, by design, and the
+published totals run about 1.35% low.**
+
+A document that diverged from its reference before it had ever matched it would
+be indistinguishable from one with a bug. This one matched first.
 
 Every defect found on the way here, and what each did to this number, is in
 [`BUGS.md`](BUGS.md).
@@ -170,19 +184,21 @@ argument was sound given `layers = [0,1,2]` and worthless because the premise
 was false. It is retracted, and `contract/compare_results.py`'s
 "admissible span" check, which encoded it, is gone.
 
-One incidental InMAP bug found on the way, which this document must match to
-agree: `layerFracs` returns `{frac, 1-frac}` for `{lower, upper}` with
+A second InMAP bug found on the way, which the document had to match in order
+to *demonstrate* agreement and now deliberately does not: `layerFracs` returns
+`{frac, 1-frac}` for `{lower, upper}` with
 `frac = (plumeHeight − below)/(above − below)`, so a **higher** plume gets
-**more** weight on the **lower** SR layer. The interpolation is inverted, and
-the document reproduces it rather than correcting it — silently fixing it would
-make this document disagree with the service for a reason nobody reading the
-totals could see. Four of the document's descriptions say so, because it will
-look like a bug to the next reader.
+**more** weight on the **lower** SR layer. The interpolation is inverted. The
+document reproduced it through the reconciliation and **corrects it now that the
+reconciliation is complete** — five of its descriptions explain the switch,
+because a reader who arrives at the divergence without the history would
+reasonably read it as a bug.
 
 It conserves mass, but conserving mass is not the same as leaving the total
 alone. **Measured at full scale: correcting the interpolation gives 7022.724781
-/ 15835.993596, so the defect biases the published totals low by +1.249% /
-+1.253%** — 86.6 and 195.9 deaths a year. It relocates 6.25% of emitted mass,
+/ 15835.993596 — which is what this document now computes — so InMAP's version
+biases the published totals low by +1.249% / +1.253%**, 86.6 and 195.9 deaths a
+year. It relocates 6.25% of emitted mass,
 against 0.43% for the source-index defect below, which makes it the larger of
 InMAP's two plume-rise bugs and the only one baked into the tutorial's numbers.
 See `BUGS.md` §5.2 for the per-layer breakdown and why deaths move up.

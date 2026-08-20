@@ -66,12 +66,25 @@ ATOL_WEIGHT_SUM = 1e-12  # |w_sr0 + w_sr1 + w_sr2 - 1|, an exact invariant
 #     full-scale contractions to assert a bound that the direct comparison with
 #     the service makes redundant.
 #
-# What SHOULD replace it at full scale is a tolerance against these two numbers,
-# measured from a full-scale run of the layerFracs document. That run has not
-# been made yet, so nothing full-scale is asserted here today; the reduced-scale
-# service targets below are.
+# The tutorial's published totals. As of 2026-08-20 these are a REFERENCE POINT,
+# not a target: the document now states CORRECT physics and declines both of
+# InMAP's plume-rise defects, so it is expected to sit ABOVE these. See
+# CORRECTED_FULL.
 ORACLE_DEATHS_K = 6928.959583
 ORACLE_DEATHS_L = 15623.924632
+
+# What this document computes at full scale, MEASURED 2026-08-20 (Rust binding,
+# repaired store). This is a regression lock, not an oracle: it is this
+# document's own output. Its authority comes from the two independent things
+# that agree with it — the NumPy oracle in plume_oracle.py reproduces the weight
+# sums and the sr_lower digest exactly, and the InMAP-faithful configuration of
+# this same document reproduced the live service to 8.9e-9 before the physics
+# was corrected (see SERVICE_DEATHS).
+CORRECTED_FULL = (7022.724781368745, 15835.993595627131)
+# Cross-binding spread on the same document is ~4e-18 relative (Julia/Rust are
+# bit-identical; Python differs in the last ulp of a compensated sum), so this
+# is loose by many orders of magnitude and will catch a real change, not noise.
+RTOL_CORRECTED = 1e-9
 
 # Reduced-scale targets from the LIVE `inmap cloud` service, run on the same
 # truncated record list this repo's ISRM_FIRSTN uses. Keyed by n_rec.
@@ -79,8 +92,23 @@ ORACLE_DEATHS_L = 15623.924632
 # These are the strongest check in the file: they are not this document's own
 # output, not a published summary, and not fitted to anything — they are what
 # InMAP itself returns for the same input.
-SERVICE_DEATHS = {
+# NOTE THE CHANGE OF MEANING, 2026-08-20. These were a direct pass/fail check
+# while the document deliberately reproduced InMAP's arithmetic. The document
+# now CORRECTS InMAP's inverted layerFracs interpolation, so it no longer agrees
+# with the service and MUST NOT be asserted against it. They are kept because
+# they are the evidence that the divergence is a fix rather than a bug: on these
+# same 200 records the InMAP-faithful configuration returned 49.09146956 /
+# 110.40696810 against the service's values below — agreement to 8.9e-9, inside
+# the precision the service prints. Agreement was established first; the
+# correction came after.
+SERVICE_DEATHS_INMAP_FAITHFUL = {
     200: (49.091470, 110.406968),
+}
+# What the CORRECTED document returns on the same 200 records, measured the same
+# day. This is what is actually checked at reduced scale — a regression lock, as
+# CORRECTED_FULL is at full scale.
+SERVICE_DEATHS = {
+    200: (49.11639491165982, 110.46292733178377),
 }
 # The service reports six decimals, so each figure is known to +-5e-7 absolute,
 # which is +-1.0e-8 relative at 49 and +-4.5e-9 at 110. RTOL_SERVICE is an order
@@ -383,20 +411,33 @@ def check_oracle(name: str, doc: dict, rep: Report) -> None:
         got = doc["deaths"][key]["sum"]
         print(f"  sum(deaths {label:<8}) = {got:.6f}   published {target:.6f}"
               f"   rel {rel_diff(got, target):.2e}  (context, not checked)")
-    print("  NOT CHECKED: no tolerance against these has been measured since the")
-    print("  document started following sr.Reader.layerFracs with layers=[0,3,6].")
-    print("  The reduced-scale live-service targets ARE checked — see SERVICE_DEATHS.")
+    print("  NOT CHECKED, and not a defect: this document declines both of InMAP's")
+    print("  plume-rise defects, so it is EXPECTED above the published pair. What is")
+    print("  checked at full scale is CORRECTED_FULL, below.")
+    for label, key, target in (("krewski", "krewski", CORRECTED_FULL[0]),
+                               ("lepeule", "lepeule", CORRECTED_FULL[1])):
+        got = doc["deaths"][key]["sum"]
+        d = rel_diff(got, target)
+        rep.check(d <= RTOL_CORRECTED, f"{name} deaths.{label} vs CORRECTED_FULL",
+                  f"{got!r} vs {target!r}, rel diff {d:.3e} > {RTOL_CORRECTED:.0e} — "
+                  "the corrected-physics full-scale total moved")
 
 
 def check_service(name: str, doc: dict, target, rep: Report) -> None:
-    """A reduced record against what the LIVE `inmap cloud` service returned.
+    """A reduced record against the corrected-physics value for the same records.
 
-    The published tutorial totals are a full-scale summary; this is InMAP itself,
-    on the same truncated record list, and it is the tightest statement the
-    contract can make about whether the document computes what InMAP computes.
+    This USED to compare against the live `inmap cloud` service directly, and
+    that is still where the number's authority comes from — but the document now
+    corrects InMAP's inverted layerFracs, so the two no longer agree and pinning
+    the document to the service would pin the bug back in. What is compared here
+    is SERVICE_DEATHS: this document's own corrected output, measured once. The
+    service's own figures are kept alongside in
+    SERVICE_DEATHS_INMAP_FAITHFUL, together with what the InMAP-faithful
+    configuration returned for them (8.9e-9 agreement) — which is the evidence
+    that the divergence below is a correction and not a regression.
     """
     n_rec = doc["grid"]["n_rec"]
-    print(f"\n--- {name} vs the live inmap cloud service (n_rec={n_rec}) ---")
+    print(f"\n--- {name} vs the corrected-physics reduced target (n_rec={n_rec}) ---")
     for label, key, want in (("krewski", "krewski", target[0]),
                              ("lepeule", "lepeule", target[1])):
         got = doc["deaths"][key]["sum"]

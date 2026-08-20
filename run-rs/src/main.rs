@@ -60,30 +60,28 @@ const PW_OBS: [(&str, [&str; 3], &str); 5] = [
 /// The InMAP source-receptor tutorial's published national totals
 /// (<https://inmap.run/blog/2019/04/20/sr/>), which account for plume rise.
 ///
-/// These are a TARGET, not an assertion. The document deliberately does not
-/// reproduce InMAP's high-plume source-index defect (a plume above model layer
-/// 7 keeps an index built in the coarse 9324-cell grid and is then read against
-/// the 52411-cell ground grid), which misplaces 654 of 43650 records — 0.43% of
-/// emitted mass — onto the wrong source cell. So the run is expected to land
-/// NEAR rather than ON these, and the deviation is printed rather than failed.
+/// These are a REFERENCE POINT, not a target and not an assertion. The document
+/// declines BOTH of InMAP's plume-rise defects: the high-plume source-index
+/// defect (a plume above model layer 7 keeps an index built in the coarse
+/// 9324-cell grid and is then read against the 52411-cell ground grid,
+/// misplacing 654 of 43650 records onto the wrong source cell) and the inverted
+/// layerFracs interpolation (which puts 6.25% of emitted mass on the wrong side
+/// of a split). So the run lands ABOVE these by about 1.35%, deliberately. What
+/// is actually checked is CORRECTED_K / CORRECTED_L below.
 const ORACLE_K: f64 = 6928.959583;
 const ORACLE_L: f64 = 15623.924632;
-/// Beyond this the deviation is no longer explainable by the clean-physics
-/// choice above and is worth investigating.
-/// MEASURED at full scale on 2026-08-19 (Julia): deathsK 6983.9385617781645
-/// (+0.79%) and deathsL 15752.315804140908 (+0.82%) against the published
-/// totals. The misplaced group is 0.43% of emitted mass but buys about twice
-/// that in deaths, because putting it back on the cells the emissions came
-/// from puts it back over people. This threshold sits just above what was
-/// measured.
-///
-/// STALE, and left in place only as a loose upper bound: it was fitted to a
-/// full-scale run that predates sr.Reader.layerFracs and the [0, 3, 6] fix, and
-/// no full-scale run of the current document has been made. At reduced scale
-/// the document now reproduces the live inmap cloud service to 9e-9, so the
-/// real threshold is expected to be far tighter — see SERVICE_DEATHS in
-/// contract/compare_results.py.
-const ORACLE_NOTABLE_REL: f64 = 8.3e-3;
+
+/// What this document computes at full scale with CORRECT physics — measured
+/// 2026-08-20 against the repaired `isrm_v1.2.1.zarr`. Unlike ORACLE_K/L above
+/// this is not an external oracle but a regression lock on the document's own
+/// output; its authority comes from the NumPy oracle agreeing on the weights and
+/// from the InMAP-faithful configuration having matched the live service to
+/// 8.9e-9 before the physics was corrected.
+const CORRECTED_K: f64 = 7022.724781368745;
+const CORRECTED_L: f64 = 15835.993595627131;
+/// Cross-binding spread on this document is ~4e-18 relative, so this is loose by
+/// many orders of magnitude and catches a real change rather than float noise.
+const CORRECTED_REL: f64 = 1e-9;
 
 fn main() {
     if let Err(e) = run() {
@@ -168,7 +166,7 @@ fn run() -> Result<(), String> {
     if reduced {
         println!("REDUCED run — first {} emission records", firstn.unwrap());
     } else {
-        println!("FULL run — whole domain (target deathsK≈{ORACLE_K:.2}, deathsL≈{ORACLE_L:.2})");
+        println!("FULL run — whole domain (correct physics: deathsK≈{CORRECTED_K:.2}, deathsL≈{CORRECTED_L:.2}; the tutorial's {ORACLE_K:.2}/{ORACLE_L:.2} is a reference, not a target)");
     }
     let model_path = paths::model();
     println!("model:   {}", model_path.display());
@@ -352,17 +350,27 @@ fn run() -> Result<(), String> {
     println!("  sum(deathsL) = {sl:?}");
     println!("  Σ TotalPM25  = {:?}", contract::compensated_sum(&tp));
     if !reduced {
-        let rk = (sk - ORACLE_K) / ORACLE_K;
-        let rl = (sl - ORACLE_L) / ORACLE_L;
-        println!("  tutorial deathsK={ORACLE_K}  deviation {:.6}%", 100.0 * rk);
-        println!("  tutorial deathsL={ORACLE_L} deviation {:.6}%", 100.0 * rl);
-        if rk.abs() > ORACLE_NOTABLE_REL || rl.abs() > ORACLE_NOTABLE_REL {
+        println!(
+            "  tutorial deathsK={ORACLE_K}  deviation {:.6}%  (reference, not a target)",
+            100.0 * (sk - ORACLE_K) / ORACLE_K
+        );
+        println!(
+            "  tutorial deathsL={ORACLE_L} deviation {:.6}%  (reference, not a target)",
+            100.0 * (sl - ORACLE_L) / ORACLE_L
+        );
+        let rk = (sk - CORRECTED_K) / CORRECTED_K;
+        let rl = (sl - CORRECTED_L) / CORRECTED_L;
+        if rk.abs() > CORRECTED_REL || rl.abs() > CORRECTED_REL {
             println!(
-                "  WARNING: deviation exceeds {:.2}% — more than the above-layer-7 \
-                 group has been measured to be worth (0.43% of emitted mass, \
-                 +0.79%/+0.82% of deaths at full scale), so something else differs.",
-                100.0 * ORACLE_NOTABLE_REL
+                "  WARNING: {sk} / {sl} differs from the measured corrected-physics \
+                 totals {CORRECTED_K} / {CORRECTED_L} by more than {:.0e} relative. \
+                 That is a REGRESSION, not a tolerance: the two are the same document \
+                 on the same store.",
+                CORRECTED_REL
             );
+        } else {
+            println!("  matches the measured corrected-physics totals to {:.1e} / {:.1e}",
+                     rk.abs(), rl.abs());
         }
     }
     println!(
