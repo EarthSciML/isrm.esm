@@ -80,6 +80,27 @@ clamped every record to a single SR layer, and is void as a statement about
 this one. Full scale costs ~1.5 h and is the next thing to do; the reduced
 agreement above is what says it is worth doing.
 
+### Result
+
+Full scale, Rust, against the live `s3://inmap-model/isrm_v1.2.1.zarr`:
+
+| | `sum(deathsK)` | `sum(deathsL)` | vs the tutorial |
+|---|---|---|---|
+| every record at ground level (before plume rise) | 7524.918846 | 16979.632171 | +8.60% |
+| plume rise, reading the store's corrupt `layers` | 6063.777261 | 13668.309908 | −12.49% |
+| **plume rise, `layerFracs` over the true `[0,3,6]`** | **6936.106343** | **15640.080273** | **+0.10%** |
+| the tutorial, reproduced through InMAP's own service | 6928.959583 | 15623.924632 | — |
+
+The remaining +0.10% is **one deliberate difference, cleanly isolated**. At
+`ISRM_FIRSTN=200` — a subset containing no record whose plume clears model
+layer 7 — this document matches InMAP's live service to **8.9e-9**. At full
+scale, 654 records do clear it, and InMAP charges those to the wrong source
+cell (a defect this document does not reproduce; see
+[`BUGS.md`](BUGS.md) §5.1). That accounts for +7.146760 deaths.
+
+Every defect found on the way here, and what each did to this number, is in
+[`BUGS.md`](BUGS.md).
+
 ### The gap was a corrupt array in the published zarr — and it is now closed
 
 The tutorial's numbers **are** exactly reproducible. Re-running the blog's own
