@@ -67,18 +67,28 @@ deliberate difference and what it costs.
 
 | binding | wall | `sum(deathsK)` | vs the blog |
 |---|---|---|---|
-| Julia | 6,316 s (1,816 s prepare/build + 4,437 s observed eval) | 6983.9385617781645 | +0.79% |
-| Python | — | not re-run at full scale since plume rise | |
-| Rust | — | does not build today | |
+| Julia | — | **re-run in progress** | |
+| Python | — | cannot load this document today | |
+| Rust | — | reduced scale only so far | |
 
-`sum(deathsL) = 15752.315804140908`, +0.82%. Peak RSS 16.6 GiB under
-`julia -t 2 --heap-size-hint=12G`. The two missing rows are not modesty about
-the numbers; both bindings are currently unable to run this document at all,
-for reasons unrelated to plume rise — see [What runs today](#what-runs-today).
+> **The previously published full-scale total (`6983.9385617781645`, +0.79%) is
+> VOID.** It was produced by an engine that contracted three of the five
+> pathways against the wrong SR emission layer. Three sibling SR loaders each
+> expose `SOA`, `pNO3`, …, and the Julia and Python gated-fetch hook published
+> every fetched slab under an alias resolved by matching the *tail* of a dotted
+> name — so all three providers claimed all three keys and the last writer in
+> hash order won. Rust was immune and was right all along; the disagreement
+> between the two bindings is what exposed it. Fixed in EarthSciAST `98e6f1b6`.
+> At `ISRM_FIRSTN=200` the fixed engine gives Julia `47.78003339619337` against
+> Rust `47.780033396193765`, both matching an independent numpy oracle.
+>
+> `RTOL_ORACLE` in [`contract/compare_results.py`](contract/compare_results.py)
+> was fitted to the void number and must be re-derived from the corrected run.
 
-`RTOL_ORACLE` in
-[`contract/compare_results.py`](contract/compare_results.py) is set from these
-two measurements and nothing wider.
+Worth keeping, because it is the argument for the whole apparatus: the
+per-record plume-layer digest matched the oracle **exactly in both bindings
+while the totals were wrong**. The physics was right and the contraction was
+not. A contract that checked only the layer assignment would have passed this.
 
 **The residual is attributed but not proven.** The deliberate deviation below
 is the expected cause, its sign is right, and the argument for why 0.43% of
@@ -381,17 +391,32 @@ shims, only Julia has been driven end to end since plume rise landed.
   emitter's `plume` block is written, and it type-checks and produces digests
   byte-identical to the Python emitter's on the same input — but no Rust
   record has been produced from it.
-* **Python stops inside `prepare`.** The build-time hoist drops `stack_layer`
-  with *"join 'overlap' envelope factor 'src_W' is not bound as build-time
-  const-array data"*, and every downstream observed goes unresolved with it.
-  A reduced Python run of this same document succeeded a few hours earlier, so
-  this looks like a binding in motion rather than a document error — but that
-  is a guess, not a diagnosis.
-* **The document's unit strings are outside the ESM unit table.** With `pint`
-  installed, the Python binding's structural validation rejects `ton/yr`,
-  `ft`, `ft/s` and `(m/s)^-1/3` (esm-spec §4.8.1). Julia does not enforce it,
-  so this surfaces in one binding only — but the document, not the binding, is
-  what is out of line, and `ton/yr` predates plume rise.
+* **Python stopped inside `prepare` — FIXED 2026-08-19.** The build-time hoist
+  dropped `stack_layer` with *"join 'overlap' envelope factor 'src_W' is not
+  bound as build-time const-array data"*, and every downstream observed went
+  unresolved with it. It was neither a document error nor a missing array: the
+  rects are bound TWICE, under `ISRM_Grid.src_W` (the loader's variable) and
+  `ISRM.src_W` (the model parameter coupled from it), and they are ONE array by
+  reference. The interpreter's suffix resolver treated two keys as an ambiguity
+  and reported a factor bound twice as "not bound". Only the pushdown rewrite's
+  MIRROR arm — the per-record binning aggregates, `stack_layer` and its chain —
+  takes that path, because it keeps the document's own full-grid rects instead
+  of the compact `pd_cell__*` gathers the forward arm gets. The trigger was this
+  document declaring its own `select` on sibling loaders, which is what created
+  the second key. Fixed in `numpy_interpreter._scoped_array_name`.
+* **The document's unit strings were outside the ESM unit table — FIXED
+  2026-08-19, in the document AND in the registry.** Three separate things:
+  `ton/yr` on the fifteen `E_*_L*` observeds and `kg/yr` on `emis_annual` were
+  both wrong about the same column (`kg/yr` parsed and lied by 907.18474; `ton`
+  is not a unit because it is three different masses), and both now read
+  `short_ton/yr` — a new §4.8.1 entry, exactly 2000 international pounds, which
+  is exactly InMAP's `907184740000` µg-per-short-ton constant. `ft` and `ft/s`
+  are now §4.8.1 entries too, so the FF10 stack columns keep saying what they
+  store. `(m/s)^-1/3` was a DOCUMENT bug and not a registry gap: §4.8.2 reads it
+  as `((m/s)^-1)/3`, a scaling factor, and the bindings gave it three different
+  meanings; it now reads `(m/s)^(-1/3)`, and a numeric scaling factor is a hard
+  error in every binding. None of this moved a number — Julia's
+  `ISRM_FIRSTN=200` totals are bit-identical before and after.
 
 ## Timing
 
