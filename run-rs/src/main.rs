@@ -76,6 +76,13 @@ const ORACLE_L: f64 = 15623.924632;
 /// that in deaths, because putting it back on the cells the emissions came
 /// from puts it back over people. This threshold sits just above what was
 /// measured.
+///
+/// STALE, and left in place only as a loose upper bound: it was fitted to a
+/// full-scale run that predates sr.Reader.layerFracs and the [0, 3, 6] fix, and
+/// no full-scale run of the current document has been made. At reduced scale
+/// the document now reproduces the live inmap cloud service to 9e-9, so the
+/// real threshold is expected to be far tighter — see SERVICE_DEATHS in
+/// contract/compare_results.py.
 const ORACLE_NOTABLE_REL: f64 = 8.3e-3;
 
 fn main() {
@@ -314,16 +321,25 @@ fn run() -> Result<(), String> {
         emis_by_layer.insert(arr.to_string(), by_layer);
     }
 
-    // The layer assignment itself. These are the document's OWN observeds, read
-    // through the same `observed_field` path as everything else — this runner
-    // does not know what ASME is, and must not: the point of the contract's
-    // `plume` block is that the ENGINE produced the assignment from the spec.
-    // contract/plume_oracle.py computes the same quantity independently, from
-    // the meteorology arrays and without the SR matrix, and compare_results.py
-    // checks the two against each other.
+    // The layer assignment itself — now a SPLIT, not a single layer: InMAP's
+    // sr.Reader.layerFracs charges a record to two SR layers whenever its model
+    // layer falls between two entries of `layers`. `sr_lower` is the lower index
+    // (integer, compared exactly) and w_sr0/1/2 are the three shares. These are
+    // the document's OWN observeds, read through the same `observed_field` path
+    // as everything else — this runner does not know what ASME is, and must
+    // not: the point of the contract's `plume` block is that the ENGINE produced
+    // the assignment from the spec. contract/plume_oracle.py computes the same
+    // quantity independently, from the meteorology arrays and without the SR
+    // matrix, and compare_results.py checks the two against each other.
+    let sr_lower = field("sr_lower")?;
+    let stack_layer = field("stack_layer")?;
+    let w0 = field("w_sr0")?;
+    let w1 = field("w_sr1")?;
+    let w2 = field("w_sr2")?;
     let plume = contract::plume_block(
-        &field("plume_layer")?,
-        &field("stack_layer")?,
+        &sr_lower,
+        &stack_layer,
+        &[&w0, &w1, &w2],
         &emis_by_layer,
     )?;
 
@@ -350,12 +366,19 @@ fn run() -> Result<(), String> {
         }
     }
     println!(
-        "  SR-layer histogram (records per layer 0/1/2) = {}",
-        plume["sr_layer"]["histogram"]
+        "  lower-SR-layer histogram (records per layer 0/1/2) = {}",
+        plume["sr_lower"]["histogram"]
     );
     println!(
-        "  sr_layer sha256 = {}",
-        plume["sr_layer"]["sha256"].as_str().unwrap_or("?")
+        "  sr_lower sha256 = {}",
+        plume["sr_lower"]["sha256"].as_str().unwrap_or("?")
+    );
+    println!(
+        "  Σ w_sr0/w_sr1/w_sr2 = {} / {} / {}   max|Σw - 1| = {}",
+        plume["weights"]["w_sr0"]["sum"],
+        plume["weights"]["w_sr1"]["sum"],
+        plume["weights"]["w_sr2"]["sum"],
+        plume["weights"]["max_sum_error"]
     );
     println!(
         "    (check it against `python3 contract/plume_oracle.py{}` — no SR matrix needed)",

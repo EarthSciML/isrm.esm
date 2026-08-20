@@ -75,7 +75,7 @@ pub fn ppl_sha256(ids: &[i64]) -> String {
 
 /// An integer-valued observed, read back off the graph as f64, as i64s.
 ///
-/// The document's `plume_layer` / `stack_layer` are sums of 0.0/1.0 indicators,
+/// The document's `sr_lower` / `stack_layer` are sums of 0.0/1.0 indicators,
 /// so every value is an exact integer in f64 and this conversion is lossless. A
 /// value that is NOT integral means the observed is no longer the indicator sum
 /// it is supposed to be — a real disagreement about the physics — so it is an
@@ -116,38 +116,63 @@ pub fn histogram(values: &[i64], min_bins: usize) -> Result<Vec<i64>, String> {
     Ok(bins)
 }
 
+/// max over records of |w0 + w1 + w2 - 1|.
+///
+/// InMAP's `layerFracs` conserves mass: whether a record lands wholly in one SR
+/// layer or is split across two, its weights sum to exactly 1. So this is float
+/// noise or a broken document, and nothing in between.
+pub fn weight_sum_error(w: &[&[f64]; 3]) -> Result<f64, String> {
+    if w[1].len() != w[0].len() || w[2].len() != w[0].len() {
+        return Err("the three SR-layer weight fields differ in length".to_string());
+    }
+    Ok((0..w[0].len())
+        .map(|i| (w[0][i] + w[1][i] + w[2][i] - 1.0).abs())
+        .fold(0.0f64, f64::max))
+}
+
 /// The schema's `plume` block, from the document's OWN observeds.
 ///
-/// `plume_layer` and `stack_layer` are the per-record observeds read straight
-/// off the graph — nothing here recomputes plume rise, and nothing here knows
-/// what ASME is. `emis_by_sr_layer` maps each SR array name to the three
+/// `sr_lower`, `stack_layer` and the three `weights` fields are per-record
+/// observeds read straight off the graph — nothing here recomputes plume rise,
+/// and nothing here knows what ASME is. `weights` is `[w_sr0, w_sr1, w_sr2]`;
+/// `emis_by_sr_layer` maps each SR array name to the three
 /// `sum(E_<pathway>_L<layer>)` totals, in layer order.
 ///
-/// The two digests are the point: integer sequences in record order, hashed the
-/// way `ppl` is, so they can be compared EXACTLY — against the other bindings
-/// and against `contract/records/plume_oracle.json`, which computes the same
-/// assignment from the meteorology arrays without touching the SR matrix.
+/// Two digests are integer sequences in record order, hashed the way `ppl` is,
+/// so they can be compared EXACTLY — against the other bindings and against
+/// `contract/records/plume_oracle.json`, which computes the same assignment
+/// from the meteorology arrays without touching the SR matrix. The weights
+/// themselves are floats (`sr.Reader.layerFracs` interpolates a plume between
+/// two SR layers) and get the FieldSummary treatment every other float gets.
 pub fn plume_block(
-    plume_layer: &[f64],
+    sr_lower: &[f64],
     stack_layer: &[f64],
+    weights: &[&[f64]; 3],
     emis_by_sr_layer: &BTreeMap<String, [f64; 3]>,
 ) -> Result<Value, String> {
-    let pl = as_int_seq(plume_layer, "plume_layer")?;
+    let sr = as_int_seq(sr_lower, "sr_lower")?;
     let sl = as_int_seq(stack_layer, "stack_layer")?;
     let mut pw = Map::new();
     for (k, v) in emis_by_sr_layer {
         pw.insert(k.clone(), json!({ "by_sr_layer": v }));
     }
     Ok(json!({
-        "sr_layer": {
-            "count": pl.len(),
-            "histogram": histogram(&pl, 3)?,
-            "sha256": int_seq_sha256(&pl),
+        "sr_lower": {
+            "count": sr.len(),
+            "histogram": histogram(&sr, 3)?,
+            "sha256": int_seq_sha256(&sr),
         },
         "stack_layer": {
             "count": sl.len(),
             "histogram": histogram(&sl, 4)?,
             "sha256": int_seq_sha256(&sl),
+        },
+        "weights": {
+            "count": weights[0].len(),
+            "max_sum_error": weight_sum_error(weights)?,
+            "w_sr0": field_summary(weights[0]),
+            "w_sr1": field_summary(weights[1]),
+            "w_sr2": field_summary(weights[2]),
         },
         "pathways": Value::Object(pw),
     }))

@@ -56,6 +56,12 @@ const ORACLE_L = 15623.924632
 # misplaced group is 0.43% of emitted mass but buys about twice that in deaths,
 # because putting it back on the cells the emissions came from puts it back
 # over people. This threshold sits just above what was measured.
+# STALE, and left in place only as a loose upper bound: it was fitted to a
+# full-scale run that predates sr.Reader.layerFracs and the [0, 3, 6] fix, and
+# no full-scale run of the current document has been made. At reduced scale the
+# document now reproduces the live inmap cloud service to 9e-9, so the real
+# threshold is expected to be far tighter — see SERVICE_DEATHS in
+# contract/compare_results.py.
 const ORACLE_NOTABLE_REL = 8.3e-3
 # Peak resident set. `/proc/self/statm` field 2 is the CURRENT resident page
 # count and is Linux-only; `Sys.maxrss()` is the high-water mark and is portable,
@@ -260,20 +266,25 @@ function main()
             # visible as tons, per pathway.
             emis_by_layer[arr] = [sum(e) for e in Es]
         end
-        # The layer assignment itself. These are the document's OWN observeds,
+        # The layer assignment itself — now a SPLIT, not a single layer:
+        # InMAP's sr.Reader.layerFracs charges a record to two SR layers
+        # whenever its model layer falls between two entries of `layers`.
+        # `sr_lower` is the lower index (integer, compared exactly) and
+        # w_sr0/1/2 are the three shares. These are the document's OWN observeds,
         # read through the same `observed_field` path as everything else — this
         # runner does not know what ASME is, and must not: the point of the
         # contract's `plume` block is that the ENGINE produced the assignment
         # from the spec. contract/plume_oracle.py computes the same quantity
         # independently, from the meteorology arrays and without the SR matrix,
         # and compare_results.py checks the two against each other.
-        plume_layer = rt("plume_layer")
+        sr_lower = rt("sr_lower")
         stack_layer = rt("stack_layer")
+        weights = Dict(w => vec(rt(w)) for w in ("w_sr0", "w_sr1", "w_sr2"))
     end
     println("EVAL done in $(round(t_eval, digits=1)) s")
 
-    plume = plume_block(plume_layer = plume_layer, stack_layer = stack_layer,
-                        emis_by_sr_layer = emis_by_layer)
+    plume = plume_block(sr_lower = sr_lower, stack_layer = stack_layer,
+                        weights = weights, emis_by_sr_layer = emis_by_layer)
 
     sK = sum(dK); sL = sum(dL)
     println("\n", "="^70)
@@ -293,9 +304,12 @@ function main()
             "(0.43% of emitted mass, +0.79%/+0.82% of deaths at full scale), so ",
             "something else differs.")
     end
-    println("  SR-layer histogram (records per layer 0/1/2) = ",
-            plume["sr_layer"]["histogram"])
-    println("  sr_layer sha256 = ", plume["sr_layer"]["sha256"])
+    println("  lower-SR-layer histogram (records per layer 0/1/2) = ",
+            plume["sr_lower"]["histogram"])
+    println("  sr_lower sha256 = ", plume["sr_lower"]["sha256"])
+    println("  Σ w_sr0/w_sr1/w_sr2 = ",
+            join((plume["weights"][w]["sum"] for w in ("w_sr0", "w_sr1", "w_sr2")), " / "),
+            "   max|Σw - 1| = ", plume["weights"]["max_sum_error"])
     println("    (check it against `python3 contract/plume_oracle.py",
             reduced ? " --firstn $firstn`" : "`", " — no SR matrix needed)")
     println("="^70)

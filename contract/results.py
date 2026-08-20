@@ -45,7 +45,7 @@ def ppl_sha256(ids: Iterable[int]) -> str:
 def _as_int_seq(values: Iterable[float], label: str) -> list[int]:
     """An integer-valued observed, read back off the graph as float64, as ints.
 
-    The document's `plume_layer` / `stack_layer` are sums of 0.0/1.0 indicators,
+    The document's `sr_lower` / `stack_layer` are sums of 0.0/1.0 indicators,
     so every value is an exact integer in float64 and this rounding is lossless.
     A value that is NOT integral means the observed is no longer the indicator
     sum it is supposed to be — that is a real disagreement about the physics, so
@@ -81,37 +81,62 @@ def histogram(values: Sequence[int], min_bins: int) -> list[int]:
     return bins
 
 
+def weight_sum_error(w0: Sequence[float], w1: Sequence[float],
+                     w2: Sequence[float]) -> float:
+    """max over records of |w0 + w1 + w2 - 1|.
+
+    InMAP's ``layerFracs`` conserves mass: whether a record lands wholly in one
+    SR layer or is split across two, its weights sum to exactly 1. So this is
+    float noise or a broken document, and nothing in between.
+    """
+    n = len(w0)
+    if not (len(w1) == len(w2) == n):
+        raise ValueError("the three SR-layer weight fields differ in length")
+    return max((abs(float(a) + float(b) + float(c) - 1.0)
+                for a, b, c in zip(w0, w1, w2)), default=0.0)
+
+
 def plume_block(
     *,
-    plume_layer: Iterable[float],
+    sr_lower: Iterable[float],
     stack_layer: Iterable[float],
+    weights: Mapping[str, Sequence[float]],
     emis_by_sr_layer: Mapping[str, Sequence[float]],
 ) -> dict[str, Any]:
     """The schema's `plume` block, from the document's OWN observeds.
 
-    `plume_layer` and `stack_layer` are the per-record observeds read straight
-    off the graph — nothing here recomputes plume rise, and nothing here knows
-    what ASME is. `emis_by_sr_layer` maps each SR array name to the three
-    ``sum(E_<pathway>_L<layer>)`` totals, in layer order.
+    `sr_lower`, `stack_layer` and the three `weights` fields are per-record
+    observeds read straight off the graph — nothing here recomputes plume rise,
+    and nothing here knows what ASME is. `weights` maps ``"w_sr0"`` / ``"w_sr1"``
+    / ``"w_sr2"`` to those observeds; `emis_by_sr_layer` maps each SR array name
+    to the three ``sum(E_<pathway>_L<layer>)`` totals, in layer order.
 
-    The two digests are the point: they are integer sequences in record order,
-    hashed the way `ppl` is, so they can be compared EXACTLY — against the other
-    bindings and against `contract/records/plume_oracle.json`, which computes
-    the same assignment from the meteorology arrays without touching the SR
-    matrix.
+    Two digests are integer sequences in record order, hashed the way `ppl` is,
+    so they can be compared EXACTLY — against the other bindings and against
+    `contract/records/plume_oracle.json`, which computes the same assignment
+    from the meteorology arrays without touching the SR matrix. The weights
+    themselves are floats (``sr.Reader.layerFracs`` interpolates a plume between
+    two SR layers) and get the FieldSummary treatment every other float here
+    gets.
     """
-    pl = _as_int_seq(plume_layer, "plume_layer")
+    sr = _as_int_seq(sr_lower, "sr_lower")
     sl = _as_int_seq(stack_layer, "stack_layer")
+    w = {k: [float(x) for x in weights[k]] for k in ("w_sr0", "w_sr1", "w_sr2")}
     return {
-        "sr_layer": {
-            "count": len(pl),
-            "histogram": histogram(pl, 3),
-            "sha256": int_seq_sha256(pl),
+        "sr_lower": {
+            "count": len(sr),
+            "histogram": histogram(sr, 3),
+            "sha256": int_seq_sha256(sr),
         },
         "stack_layer": {
             "count": len(sl),
             "histogram": histogram(sl, 4),
             "sha256": int_seq_sha256(sl),
+        },
+        "weights": {
+            "count": len(w["w_sr0"]),
+            "max_sum_error": weight_sum_error(w["w_sr0"], w["w_sr1"], w["w_sr2"]),
+            **{k: field_summary(v) for k, v in w.items()},
         },
         "pathways": {
             str(k): {"by_sr_layer": [float(x) for x in v]}

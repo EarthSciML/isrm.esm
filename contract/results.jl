@@ -9,7 +9,8 @@
 #                 ppl = ppl_ids,                       # 1-based, any order
 #                 pathways = Dict("SOA" => (emis_sum=..., conc_sum=..., conc_max=...), ...),
 #                 total_pm25 = TotalPM25, deathsK = dK, deathsL = dL,
-#                 plume = plume_block(plume_layer = ..., stack_layer = ...,
+#                 plume = plume_block(sr_lower = ..., stack_layer = ...,
+#                                     weights = Dict("w_sr0" => ..., "w_sr1" => ..., "w_sr2" => ...),
 #                                     emis_by_sr_layer = Dict("SOA" => [e0, e1, e2], ...)),
 #                 timing = Dict("wall_seconds" => t))
 #
@@ -45,7 +46,7 @@ ppl_sha256(ids) = int_seq_sha256(sort(collect(Int, ids)))
 
 """An integer-valued observed, read back off the graph as Float64, as Ints.
 
-The document's `plume_layer` / `stack_layer` are sums of 0.0/1.0 indicators, so
+The document's `sr_lower` / `stack_layer` are sums of 0.0/1.0 indicators, so
 every value is an exact integer in Float64 and this conversion is lossless. A
 value that is NOT integral means the observed is no longer the indicator sum it
 is supposed to be — a real disagreement about the physics — so it errors rather
@@ -78,27 +79,52 @@ function histogram(values, min_bins::Integer)
     return bins
 end
 
+"""max over records of |w0 + w1 + w2 - 1|.
+
+InMAP's `layerFracs` conserves mass: whether a record lands wholly in one SR
+layer or is split across two, its weights sum to exactly 1. So this is float
+noise or a broken document, and nothing in between."""
+function weight_sum_error(w0, w1, w2)
+    length(w0) == length(w1) == length(w2) ||
+        error("the three SR-layer weight fields differ in length")
+    isempty(w0) && return 0.0
+    return maximum(abs(Float64(a) + Float64(b) + Float64(c) - 1.0)
+                   for (a, b, c) in zip(w0, w1, w2))
+end
+
 """The schema's `plume` block, from the document's OWN observeds.
 
-`plume_layer` and `stack_layer` are the per-record observeds read straight off
-the graph — nothing here recomputes plume rise, and nothing here knows what ASME
-is. `emis_by_sr_layer` maps each SR array name to the three
+`sr_lower`, `stack_layer` and the three `weights` fields are per-record
+observeds read straight off the graph — nothing here recomputes plume rise, and
+nothing here knows what ASME is. `weights` maps "w_sr0"/"w_sr1"/"w_sr2" to those
+observeds; `emis_by_sr_layer` maps each SR array name to the three
 `sum(E_<pathway>_L<layer>)` totals, in layer order.
 
-The two digests are the point: integer sequences in record order, hashed the way
-`ppl` is, so they can be compared EXACTLY — against the other bindings and
-against `contract/records/plume_oracle.json`, which computes the same assignment
-from the meteorology arrays without touching the SR matrix."""
-function plume_block(; plume_layer, stack_layer, emis_by_sr_layer::AbstractDict)
-    pl = as_int_seq(plume_layer, "plume_layer")
+Two digests are integer sequences in record order, hashed the way `ppl` is, so
+they can be compared EXACTLY — against the other bindings and against
+`contract/records/plume_oracle.json`, which computes the same assignment from
+the meteorology arrays without touching the SR matrix. The weights themselves
+are floats (`sr.Reader.layerFracs` interpolates a plume between two SR layers)
+and get the FieldSummary treatment every other float here gets."""
+function plume_block(; sr_lower, stack_layer, weights::AbstractDict,
+                     emis_by_sr_layer::AbstractDict)
+    sr = as_int_seq(sr_lower, "sr_lower")
     sl = as_int_seq(stack_layer, "stack_layer")
+    w = Dict(k => Float64.(collect(weights[k])) for k in ("w_sr0", "w_sr1", "w_sr2"))
+    wblock = Dict{String,Any}(
+        "count"         => length(w["w_sr0"]),
+        "max_sum_error" => weight_sum_error(w["w_sr0"], w["w_sr1"], w["w_sr2"]))
+    for (k, v) in w
+        wblock[k] = field_summary(v)
+    end
     return Dict{String,Any}(
-        "sr_layer" => Dict{String,Any}("count"     => length(pl),
-                                       "histogram" => histogram(pl, 3),
-                                       "sha256"    => int_seq_sha256(pl)),
+        "sr_lower" => Dict{String,Any}("count"     => length(sr),
+                                       "histogram" => histogram(sr, 3),
+                                       "sha256"    => int_seq_sha256(sr)),
         "stack_layer" => Dict{String,Any}("count"     => length(sl),
                                           "histogram" => histogram(sl, 4),
                                           "sha256"    => int_seq_sha256(sl)),
+        "weights" => wblock,
         "pathways" => Dict{String,Any}(
             String(k) => Dict{String,Any}("by_sr_layer" => Float64.(collect(v)))
             for (k, v) in emis_by_sr_layer),

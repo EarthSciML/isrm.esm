@@ -90,7 +90,17 @@
   "N_LAYER": {
    "type": "integer",
    "default": 3,
-   "description": "SR emission layers. All three are used: plume rise assigns every emission record to one of them (`plume_layer`), and the sibling loaders ISRM_SR_L0/L1/L2 fix this axis to 0, 1 and 2."
+   "description": "SR emission layers. All three are used: plume rise splits every emission record across them with the weights w_sr0/w_sr1/w_sr2, and the sibling loaders ISRM_SR_L0/L1/L2 fix this axis to 0, 1 and 2. The MODEL layers these three were computed for are [0, SR_MODEL_L1, SR_MODEL_L2] = [0, 3, 6] \u2014 see SR_MODEL_L1."
+  },
+  "SR_MODEL_L1": {
+   "type": "integer",
+   "default": 3,
+   "description": "The MODEL layer SR emission layer 1 was computed for. The SR matrix's `layers` variable \u2014 the MODEL layer indices the SR calculation was performed for \u2014 is [0, 3, 6] in the authoritative isrm_v1.2.1.ncf on Zenodo. The isrm_v1.2.1.zarr this document reads serves [0, 1, 2] instead: a machine-generated arange that displaced the real array during the zarr conversion. Corroboration independent of the NetCDF: sr/sr.go attaches `description: \"Layer indices for which the SR calculation was performed\"` to `layers`, and the zarr's copy has NO attributes at all while neighbouring InMAP variables (LayerHeight, Dz) keep theirs; the same conversion pass lost the per-cell `Layer` variable and stripped .zattrs off the SR arrays, which is why the shims need seed_empty_zattrs. Zenodo calls the three heights \"ground-level, low-stack, and high-stack\", which [0,3,6] (0-58 m / 253-391 m / 786-1049 m) is and [0,1,2] (three adjacent layers all under 245 m) is not. The matrix DATA is fine \u2014 Zenodo's zip is md5-identical across depositions and its rows are byte-identical to the zarr's. So [0,3,6] is DECLARED HERE and is deliberately NOT read from the store: `layers` is the one upstream input from that store that cannot be trusted. Used here as the layer-major offset SR_MODEL_L1*N_SRC + c into the 596444-cell meteorology arrays."
+  },
+  "SR_MODEL_L2": {
+   "type": "integer",
+   "default": 6,
+   "description": "The MODEL layer SR emission layer 2 was computed for \u2014 the top entry of `layers`. See SR_MODEL_L1 for the provenance of [0, 3, 6]. Two things ride on this number: it is the upper interpolation node for a plume between SR layers 1 and 2, and it is where `plume_model_layer` saturates, which is what folds InMAP's AboveTopErr case (model layer > 6 -> SR layer 2, weight 1) into the same branch as an exact match."
   },
   "N_REC": {
    "type": "integer",
@@ -416,6 +426,11 @@
      "file_variable": "LayerHeight",
      "units": "m",
      "description": "Staggered layer-BOTTOM height: LayerHeight[l, c] is the height of the bottom of model layer l over cell c, and layer 0's is 0. This is the column InMAP's findLayer searches. Length 596444 (N_ALL), layer-major over all 27 model layers; read in full because plume rise gathers it at whichever layer a stack top sits in."
+    },
+    "Dz": {
+     "file_variable": "Dz",
+     "units": "m",
+     "description": "Layer THICKNESS: Dz[l, c] is the vertical extent of model layer l over cell c, so LayerHeight[l, c] + Dz[l, c]/2 is that layer's CENTRE height \u2014 which is the column InMAP's sr.Reader.layerFracs interpolates on (sr.d.VerticalProfile fills height[i] = c.LayerHeight + c.Dz/2). Length 596444 (N_ALL), layer-major over all 27 model layers; read in full because plume rise gathers it at whichever layer a stack top sits in. It keeps its zarr attributes, unlike `layers` \u2014 see the SR_MODEL_L1 metaparameter."
     }
    }
   },
@@ -1439,6 +1454,15 @@
       "all_cells"
      ],
      "description": "Staggered layer-BOTTOM height: LayerHeight[l, c] is the height of the bottom of model layer l over cell c, and layer 0's is 0. This is the column InMAP's findLayer searches. From ISRM_Grid.LayerHeight: one value per cell of the full 596444-cell grid, layer-major over the 27 model layers, so `l*N_SRC + c` reaches layer l of source cell c."
+    },
+    "Dz": {
+     "type": "parameter",
+     "units": "m",
+     "default": 0.0,
+     "shape": [
+      "all_cells"
+     ],
+     "description": "Layer THICKNESS: Dz[l, c] is the vertical extent of model layer l over cell c, so LayerHeight[l, c] + Dz[l, c]/2 is that layer's CENTRE height \u2014 which is the column InMAP's sr.Reader.layerFracs interpolates on (sr.d.VerticalProfile fills height[i] = c.LayerHeight + c.Dz/2). Length 596444 (N_ALL), layer-major over all 27 model layers. From ISRM_Grid.Dz: one value per cell of the full 596444-cell grid, so `l*N_SRC + c` reaches layer l of source cell c."
     },
     "fact": {
      "type": "parameter",
@@ -6096,7 +6120,7 @@
      },
      "description": "Height the plume centreline reaches: stack height + delta_h."
     },
-    "plume_layer": {
+    "plume_model_layer": {
      "type": "observed",
      "units": "1",
      "shape": [
@@ -6236,128 +6260,236 @@
           },
           0.0,
           {
-           "op": "min",
+           "op": "+",
            "args": [
             {
-             "op": "+",
+             "op": "ifelse",
              "args": [
               {
-               "op": "ifelse",
+               "op": "<",
                "args": [
                 {
-                 "op": "<",
+                 "op": "index",
                  "args": [
+                  "LayerHeight",
                   {
-                   "op": "index",
+                   "op": "+",
                    "args": [
-                    "LayerHeight",
                     {
-                     "op": "+",
+                     "op": "*",
                      "args": [
-                      {
-                       "op": "*",
-                       "args": [
-                        1,
-                        "N_SRC"
-                       ]
-                      },
-                      "c"
+                      1,
+                      "N_SRC"
                      ]
-                    }
-                   ]
-                  },
-                  {
-                   "op": "index",
-                   "args": [
-                    "plume_height",
-                    "r"
+                    },
+                    "c"
                    ]
                   }
                  ]
                 },
-                1.0,
-                0.0
+                {
+                 "op": "index",
+                 "args": [
+                  "plume_height",
+                  "r"
+                 ]
+                }
                ]
               },
-              {
-               "op": "ifelse",
-               "args": [
-                {
-                 "op": "<",
-                 "args": [
-                  {
-                   "op": "index",
-                   "args": [
-                    "LayerHeight",
-                    {
-                     "op": "+",
-                     "args": [
-                      {
-                       "op": "*",
-                       "args": [
-                        2,
-                        "N_SRC"
-                       ]
-                      },
-                      "c"
-                     ]
-                    }
-                   ]
-                  },
-                  {
-                   "op": "index",
-                   "args": [
-                    "plume_height",
-                    "r"
-                   ]
-                  }
-                 ]
-                },
-                1.0,
-                0.0
-               ]
-              },
-              {
-               "op": "ifelse",
-               "args": [
-                {
-                 "op": "<",
-                 "args": [
-                  {
-                   "op": "index",
-                   "args": [
-                    "LayerHeight",
-                    {
-                     "op": "+",
-                     "args": [
-                      {
-                       "op": "*",
-                       "args": [
-                        3,
-                        "N_SRC"
-                       ]
-                      },
-                      "c"
-                     ]
-                    }
-                   ]
-                  },
-                  {
-                   "op": "index",
-                   "args": [
-                    "plume_height",
-                    "r"
-                   ]
-                  }
-                 ]
-                },
-                1.0,
-                0.0
-               ]
-              }
+              1.0,
+              0.0
              ]
             },
-            2.0
+            {
+             "op": "ifelse",
+             "args": [
+              {
+               "op": "<",
+               "args": [
+                {
+                 "op": "index",
+                 "args": [
+                  "LayerHeight",
+                  {
+                   "op": "+",
+                   "args": [
+                    {
+                     "op": "*",
+                     "args": [
+                      2,
+                      "N_SRC"
+                     ]
+                    },
+                    "c"
+                   ]
+                  }
+                 ]
+                },
+                {
+                 "op": "index",
+                 "args": [
+                  "plume_height",
+                  "r"
+                 ]
+                }
+               ]
+              },
+              1.0,
+              0.0
+             ]
+            },
+            {
+             "op": "ifelse",
+             "args": [
+              {
+               "op": "<",
+               "args": [
+                {
+                 "op": "index",
+                 "args": [
+                  "LayerHeight",
+                  {
+                   "op": "+",
+                   "args": [
+                    {
+                     "op": "*",
+                     "args": [
+                      3,
+                      "N_SRC"
+                     ]
+                    },
+                    "c"
+                   ]
+                  }
+                 ]
+                },
+                {
+                 "op": "index",
+                 "args": [
+                  "plume_height",
+                  "r"
+                 ]
+                }
+               ]
+              },
+              1.0,
+              0.0
+             ]
+            },
+            {
+             "op": "ifelse",
+             "args": [
+              {
+               "op": "<",
+               "args": [
+                {
+                 "op": "index",
+                 "args": [
+                  "LayerHeight",
+                  {
+                   "op": "+",
+                   "args": [
+                    {
+                     "op": "*",
+                     "args": [
+                      4,
+                      "N_SRC"
+                     ]
+                    },
+                    "c"
+                   ]
+                  }
+                 ]
+                },
+                {
+                 "op": "index",
+                 "args": [
+                  "plume_height",
+                  "r"
+                 ]
+                }
+               ]
+              },
+              1.0,
+              0.0
+             ]
+            },
+            {
+             "op": "ifelse",
+             "args": [
+              {
+               "op": "<",
+               "args": [
+                {
+                 "op": "index",
+                 "args": [
+                  "LayerHeight",
+                  {
+                   "op": "+",
+                   "args": [
+                    {
+                     "op": "*",
+                     "args": [
+                      5,
+                      "N_SRC"
+                     ]
+                    },
+                    "c"
+                   ]
+                  }
+                 ]
+                },
+                {
+                 "op": "index",
+                 "args": [
+                  "plume_height",
+                  "r"
+                 ]
+                }
+               ]
+              },
+              1.0,
+              0.0
+             ]
+            },
+            {
+             "op": "ifelse",
+             "args": [
+              {
+               "op": "<",
+               "args": [
+                {
+                 "op": "index",
+                 "args": [
+                  "LayerHeight",
+                  {
+                   "op": "+",
+                   "args": [
+                    {
+                     "op": "*",
+                     "args": [
+                      6,
+                      "N_SRC"
+                     ]
+                    },
+                    "c"
+                   ]
+                  }
+                 ]
+                },
+                {
+                 "op": "index",
+                 "args": [
+                  "plume_height",
+                  "r"
+                 ]
+                }
+               ]
+              },
+              1.0,
+              0.0
+             ]
+            }
            ]
           }
          ]
@@ -6365,7 +6497,1201 @@
        ]
       }
      },
-     "description": "THE ANSWER PLUME RISE EXISTS TO PRODUCE: which of the SR matrix's three emission layers each record's plume reaches. findLayer again, now on the plume height, with two InMAP rules folded in. A record with stack height 0 never enters IsPlumeIn at all (`if e.Height != 0` in sr.Reader.Concentrations) and emits at ground level, hence the outer ifelse. And min(., 2) IS the SR-layer clamp: sr.layers is [0,1,2], so layerFracs returns the matching layer for 0/1/2 and the topmost layer for anything above \u2014 model layers 3..26 all clamp to 2. Three indicators plus that clamp therefore need no separate model-layer variable. NOTE, deliberately not bug-compatible with InMAP: InMAP clamps a plume above model layer 7 to SR layer 2 but pairs it with an index built in the coarse 9324-cell high-grid, which it then reads against the 52411-cell ground grid, charging those emissions to the wrong source cell (654 records, 0.43% of mass, on this inventory). This document clamps to SR layer 2 at the cell the emission actually came from."
+     "description": "The MODEL layer the plume centreline reaches, SATURATED AT SR_MODEL_L2 = 6. findLayer again (a sum of indicators against the staggered layer BOTTOMS, which with LayerHeight[0] = 0 counts the bottoms strictly below the plume), now on plume_height instead of stack height, and with InMAP's zero-stack rule folded in: a record with stack height 0 never enters IsPlumeIn at all (`if e.Height != 0` in sr.Reader.Concentrations) and emits at ground level, hence the outer ifelse. SIX indicators, NOT more, and the saturation is the point rather than an approximation: sr.Reader.layerFracs maps model layer > SR_MODEL_L2 to SR layer 2 with weight 1 (its AboveTopErr branch, which the CLI downgrades to a log line), which is exactly what it maps model layer == SR_MODEL_L2 to, so capping the count at 6 folds the two branches into one and loses nothing. IN-BOUNDS ARGUMENT, load-bearing: a sum of six indicators is at most 6, so the largest offset reached here is 6*52411 + 52410 = 366876 < 596444 = N_ALL. Widening the sum past 6 would be WRONG as well as out-of-range-prone \u2014 model layer 8 is not at offset 8*N_SRC + c, because the flat layout switches to the 9324-cell coarse grid above layer 7. The leading containment indicator is the same spatial join E_* uses, so this picks the record's own cell and is 0 for a record outside the grid."
+    },
+    "frac_lo": {
+     "type": "observed",
+     "units": "1",
+     "shape": [
+      "emis_records"
+     ],
+     "expression": {
+      "op": "aggregate",
+      "output_idx": [
+       "r"
+      ],
+      "reduce": "+",
+      "ranges": {
+       "c": {
+        "from": "src_cells"
+       },
+       "r": {
+        "from": "emis_records"
+       }
+      },
+      "args": [
+       "src_W",
+       "src_S",
+       "src_E",
+       "src_N",
+       "X",
+       "Y",
+       "LayerHeight",
+       "Dz",
+       "plume_height"
+      ],
+      "expr": {
+       "op": "*",
+       "args": [
+        {
+         "op": "ifelse",
+         "args": [
+          {
+           "op": "and",
+           "args": [
+            {
+             "op": "<=",
+             "args": [
+              {
+               "op": "index",
+               "args": [
+                "src_W",
+                "c"
+               ]
+              },
+              {
+               "op": "index",
+               "args": [
+                "X",
+                "r"
+               ]
+              }
+             ]
+            },
+            {
+             "op": "<",
+             "args": [
+              {
+               "op": "index",
+               "args": [
+                "X",
+                "r"
+               ]
+              },
+              {
+               "op": "index",
+               "args": [
+                "src_E",
+                "c"
+               ]
+              }
+             ]
+            },
+            {
+             "op": "<=",
+             "args": [
+              {
+               "op": "index",
+               "args": [
+                "src_S",
+                "c"
+               ]
+              },
+              {
+               "op": "index",
+               "args": [
+                "Y",
+                "r"
+               ]
+              }
+             ]
+            },
+            {
+             "op": "<",
+             "args": [
+              {
+               "op": "index",
+               "args": [
+                "Y",
+                "r"
+               ]
+              },
+              {
+               "op": "index",
+               "args": [
+                "src_N",
+                "c"
+               ]
+              }
+             ]
+            }
+           ]
+          },
+          1.0,
+          0.0
+         ]
+        },
+        {
+         "op": "/",
+         "args": [
+          {
+           "op": "-",
+           "args": [
+            {
+             "op": "index",
+             "args": [
+              "plume_height",
+              "r"
+             ]
+            },
+            {
+             "op": "+",
+             "args": [
+              {
+               "op": "index",
+               "args": [
+                "LayerHeight",
+                "c"
+               ]
+              },
+              {
+               "op": "*",
+               "args": [
+                0.5,
+                {
+                 "op": "index",
+                 "args": [
+                  "Dz",
+                  "c"
+                 ]
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "op": "ifelse",
+           "args": [
+            {
+             "op": "==",
+             "args": [
+              {
+               "op": "-",
+               "args": [
+                {
+                 "op": "+",
+                 "args": [
+                  {
+                   "op": "index",
+                   "args": [
+                    "LayerHeight",
+                    {
+                     "op": "+",
+                     "args": [
+                      {
+                       "op": "*",
+                       "args": [
+                        "SR_MODEL_L1",
+                        "N_SRC"
+                       ]
+                      },
+                      "c"
+                     ]
+                    }
+                   ]
+                  },
+                  {
+                   "op": "*",
+                   "args": [
+                    0.5,
+                    {
+                     "op": "index",
+                     "args": [
+                      "Dz",
+                      {
+                       "op": "+",
+                       "args": [
+                        {
+                         "op": "*",
+                         "args": [
+                          "SR_MODEL_L1",
+                          "N_SRC"
+                         ]
+                        },
+                        "c"
+                       ]
+                      }
+                     ]
+                    }
+                   ]
+                  }
+                 ]
+                },
+                {
+                 "op": "+",
+                 "args": [
+                  {
+                   "op": "index",
+                   "args": [
+                    "LayerHeight",
+                    "c"
+                   ]
+                  },
+                  {
+                   "op": "*",
+                   "args": [
+                    0.5,
+                    {
+                     "op": "index",
+                     "args": [
+                      "Dz",
+                      "c"
+                     ]
+                    }
+                   ]
+                  }
+                 ]
+                }
+               ]
+              },
+              0.0
+             ]
+            },
+            1.0,
+            {
+             "op": "-",
+             "args": [
+              {
+               "op": "+",
+               "args": [
+                {
+                 "op": "index",
+                 "args": [
+                  "LayerHeight",
+                  {
+                   "op": "+",
+                   "args": [
+                    {
+                     "op": "*",
+                     "args": [
+                      "SR_MODEL_L1",
+                      "N_SRC"
+                     ]
+                    },
+                    "c"
+                   ]
+                  }
+                 ]
+                },
+                {
+                 "op": "*",
+                 "args": [
+                  0.5,
+                  {
+                   "op": "index",
+                   "args": [
+                    "Dz",
+                    {
+                     "op": "+",
+                     "args": [
+                      {
+                       "op": "*",
+                       "args": [
+                        "SR_MODEL_L1",
+                        "N_SRC"
+                       ]
+                      },
+                      "c"
+                     ]
+                    }
+                   ]
+                  }
+                 ]
+                }
+               ]
+              },
+              {
+               "op": "+",
+               "args": [
+                {
+                 "op": "index",
+                 "args": [
+                  "LayerHeight",
+                  "c"
+                 ]
+                },
+                {
+                 "op": "*",
+                 "args": [
+                  0.5,
+                  {
+                   "op": "index",
+                   "args": [
+                    "Dz",
+                    "c"
+                   ]
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     },
+     "description": "Interpolation fraction for a plume whose model layer falls STRICTLY BETWEEN SR layers 0 and 1 \u2014 i.e. model layer 1 or 2, the only two strictly between 0 and SR_MODEL_L1 = 3. frac = (plume_height - below)/(above - below), with `below` and `above` the CELL-CENTRE heights of model layers 0 and SR_MODEL_L1 over the record's own source cell: LayerHeight[l*N_SRC + c] + 0.5*Dz[l*N_SRC + c]. Centres, not layer bottoms \u2014 layerFracs reads them out of sr.d.VerticalProfile, which fills height[i] = c.LayerHeight + c.Dz/2. The denominator is guarded rather than the quotient branched, because `ifelse` is EAGER inside an aggregate in every binding. Evaluated for EVERY record, including the ones this branch does not own; w_sr0/w_sr1/w_sr2 multiply it by zero there, and the guard keeps it finite so an eager binding has nothing to trip over. INTERPOLATION IS INVERTED, AND THAT IS DELIBERATE. layerFracs returns `[]float64{frac, 1 - frac}` for `[]int{i, i+1}` \u2014 the LOWER SR layer gets `frac`, so a HIGHER plume puts MORE weight on the LOWER layer. That is a bug in InMAP. It conserves mass, so it does not bias the national total, and this document reproduces it because the point is to compute what InMAP computes. DO NOT \"fix\" it here: silently correcting it would make this document disagree with the service it is being reconciled against, for a reason nobody reading the totals could see."
+    },
+    "frac_hi": {
+     "type": "observed",
+     "units": "1",
+     "shape": [
+      "emis_records"
+     ],
+     "expression": {
+      "op": "aggregate",
+      "output_idx": [
+       "r"
+      ],
+      "reduce": "+",
+      "ranges": {
+       "c": {
+        "from": "src_cells"
+       },
+       "r": {
+        "from": "emis_records"
+       }
+      },
+      "args": [
+       "src_W",
+       "src_S",
+       "src_E",
+       "src_N",
+       "X",
+       "Y",
+       "LayerHeight",
+       "Dz",
+       "plume_height"
+      ],
+      "expr": {
+       "op": "*",
+       "args": [
+        {
+         "op": "ifelse",
+         "args": [
+          {
+           "op": "and",
+           "args": [
+            {
+             "op": "<=",
+             "args": [
+              {
+               "op": "index",
+               "args": [
+                "src_W",
+                "c"
+               ]
+              },
+              {
+               "op": "index",
+               "args": [
+                "X",
+                "r"
+               ]
+              }
+             ]
+            },
+            {
+             "op": "<",
+             "args": [
+              {
+               "op": "index",
+               "args": [
+                "X",
+                "r"
+               ]
+              },
+              {
+               "op": "index",
+               "args": [
+                "src_E",
+                "c"
+               ]
+              }
+             ]
+            },
+            {
+             "op": "<=",
+             "args": [
+              {
+               "op": "index",
+               "args": [
+                "src_S",
+                "c"
+               ]
+              },
+              {
+               "op": "index",
+               "args": [
+                "Y",
+                "r"
+               ]
+              }
+             ]
+            },
+            {
+             "op": "<",
+             "args": [
+              {
+               "op": "index",
+               "args": [
+                "Y",
+                "r"
+               ]
+              },
+              {
+               "op": "index",
+               "args": [
+                "src_N",
+                "c"
+               ]
+              }
+             ]
+            }
+           ]
+          },
+          1.0,
+          0.0
+         ]
+        },
+        {
+         "op": "/",
+         "args": [
+          {
+           "op": "-",
+           "args": [
+            {
+             "op": "index",
+             "args": [
+              "plume_height",
+              "r"
+             ]
+            },
+            {
+             "op": "+",
+             "args": [
+              {
+               "op": "index",
+               "args": [
+                "LayerHeight",
+                {
+                 "op": "+",
+                 "args": [
+                  {
+                   "op": "*",
+                   "args": [
+                    "SR_MODEL_L1",
+                    "N_SRC"
+                   ]
+                  },
+                  "c"
+                 ]
+                }
+               ]
+              },
+              {
+               "op": "*",
+               "args": [
+                0.5,
+                {
+                 "op": "index",
+                 "args": [
+                  "Dz",
+                  {
+                   "op": "+",
+                   "args": [
+                    {
+                     "op": "*",
+                     "args": [
+                      "SR_MODEL_L1",
+                      "N_SRC"
+                     ]
+                    },
+                    "c"
+                   ]
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "op": "ifelse",
+           "args": [
+            {
+             "op": "==",
+             "args": [
+              {
+               "op": "-",
+               "args": [
+                {
+                 "op": "+",
+                 "args": [
+                  {
+                   "op": "index",
+                   "args": [
+                    "LayerHeight",
+                    {
+                     "op": "+",
+                     "args": [
+                      {
+                       "op": "*",
+                       "args": [
+                        "SR_MODEL_L2",
+                        "N_SRC"
+                       ]
+                      },
+                      "c"
+                     ]
+                    }
+                   ]
+                  },
+                  {
+                   "op": "*",
+                   "args": [
+                    0.5,
+                    {
+                     "op": "index",
+                     "args": [
+                      "Dz",
+                      {
+                       "op": "+",
+                       "args": [
+                        {
+                         "op": "*",
+                         "args": [
+                          "SR_MODEL_L2",
+                          "N_SRC"
+                         ]
+                        },
+                        "c"
+                       ]
+                      }
+                     ]
+                    }
+                   ]
+                  }
+                 ]
+                },
+                {
+                 "op": "+",
+                 "args": [
+                  {
+                   "op": "index",
+                   "args": [
+                    "LayerHeight",
+                    {
+                     "op": "+",
+                     "args": [
+                      {
+                       "op": "*",
+                       "args": [
+                        "SR_MODEL_L1",
+                        "N_SRC"
+                       ]
+                      },
+                      "c"
+                     ]
+                    }
+                   ]
+                  },
+                  {
+                   "op": "*",
+                   "args": [
+                    0.5,
+                    {
+                     "op": "index",
+                     "args": [
+                      "Dz",
+                      {
+                       "op": "+",
+                       "args": [
+                        {
+                         "op": "*",
+                         "args": [
+                          "SR_MODEL_L1",
+                          "N_SRC"
+                         ]
+                        },
+                        "c"
+                       ]
+                      }
+                     ]
+                    }
+                   ]
+                  }
+                 ]
+                }
+               ]
+              },
+              0.0
+             ]
+            },
+            1.0,
+            {
+             "op": "-",
+             "args": [
+              {
+               "op": "+",
+               "args": [
+                {
+                 "op": "index",
+                 "args": [
+                  "LayerHeight",
+                  {
+                   "op": "+",
+                   "args": [
+                    {
+                     "op": "*",
+                     "args": [
+                      "SR_MODEL_L2",
+                      "N_SRC"
+                     ]
+                    },
+                    "c"
+                   ]
+                  }
+                 ]
+                },
+                {
+                 "op": "*",
+                 "args": [
+                  0.5,
+                  {
+                   "op": "index",
+                   "args": [
+                    "Dz",
+                    {
+                     "op": "+",
+                     "args": [
+                      {
+                       "op": "*",
+                       "args": [
+                        "SR_MODEL_L2",
+                        "N_SRC"
+                       ]
+                      },
+                      "c"
+                     ]
+                    }
+                   ]
+                  }
+                 ]
+                }
+               ]
+              },
+              {
+               "op": "+",
+               "args": [
+                {
+                 "op": "index",
+                 "args": [
+                  "LayerHeight",
+                  {
+                   "op": "+",
+                   "args": [
+                    {
+                     "op": "*",
+                     "args": [
+                      "SR_MODEL_L1",
+                      "N_SRC"
+                     ]
+                    },
+                    "c"
+                   ]
+                  }
+                 ]
+                },
+                {
+                 "op": "*",
+                 "args": [
+                  0.5,
+                  {
+                   "op": "index",
+                   "args": [
+                    "Dz",
+                    {
+                     "op": "+",
+                     "args": [
+                      {
+                       "op": "*",
+                       "args": [
+                        "SR_MODEL_L1",
+                        "N_SRC"
+                       ]
+                      },
+                      "c"
+                     ]
+                    }
+                   ]
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     },
+     "description": "Interpolation fraction for a plume whose model layer falls STRICTLY BETWEEN SR layers 1 and 2 \u2014 i.e. model layer 4 or 5, the only two strictly between SR_MODEL_L1 = 3 and SR_MODEL_L2 = 6. frac = (plume_height - below)/(above - below), with `below` and `above` the CELL-CENTRE heights of model layers SR_MODEL_L1 and SR_MODEL_L2 over the record's own source cell: LayerHeight[l*N_SRC + c] + 0.5*Dz[l*N_SRC + c]. Centres, not layer bottoms \u2014 layerFracs reads them out of sr.d.VerticalProfile, which fills height[i] = c.LayerHeight + c.Dz/2. The denominator is guarded rather than the quotient branched, because `ifelse` is EAGER inside an aggregate in every binding. Evaluated for EVERY record, including the ones this branch does not own; w_sr0/w_sr1/w_sr2 multiply it by zero there, and the guard keeps it finite so an eager binding has nothing to trip over. INTERPOLATION IS INVERTED, AND THAT IS DELIBERATE. layerFracs returns `[]float64{frac, 1 - frac}` for `[]int{i, i+1}` \u2014 the LOWER SR layer gets `frac`, so a HIGHER plume puts MORE weight on the LOWER layer. That is a bug in InMAP. It conserves mass, so it does not bias the national total, and this document reproduces it because the point is to compute what InMAP computes. DO NOT \"fix\" it here: silently correcting it would make this document disagree with the service it is being reconciled against, for a reason nobody reading the totals could see."
+    },
+    "w_sr0": {
+     "type": "observed",
+     "units": "1",
+     "shape": [
+      "emis_records"
+     ],
+     "expression": {
+      "op": "aggregate",
+      "output_idx": [
+       "r"
+      ],
+      "ranges": {
+       "r": {
+        "from": "emis_records"
+       }
+      },
+      "args": [
+       "plume_model_layer",
+       "frac_lo"
+      ],
+      "expr": {
+       "op": "+",
+       "args": [
+        {
+         "op": "ifelse",
+         "args": [
+          {
+           "op": "==",
+           "args": [
+            {
+             "op": "index",
+             "args": [
+              "plume_model_layer",
+              "r"
+             ]
+            },
+            0.0
+           ]
+          },
+          1.0,
+          0.0
+         ]
+        },
+        {
+         "op": "ifelse",
+         "args": [
+          {
+           "op": "or",
+           "args": [
+            {
+             "op": "==",
+             "args": [
+              {
+               "op": "index",
+               "args": [
+                "plume_model_layer",
+                "r"
+               ]
+              },
+              1.0
+             ]
+            },
+            {
+             "op": "==",
+             "args": [
+              {
+               "op": "index",
+               "args": [
+                "plume_model_layer",
+                "r"
+               ]
+              },
+              2.0
+             ]
+            }
+           ]
+          },
+          {
+           "op": "index",
+           "args": [
+            "frac_lo",
+            "r"
+           ]
+          },
+          0.0
+         ]
+        }
+       ]
+      }
+     },
+     "description": "THE ANSWER PLUME RISE EXISTS TO PRODUCE, part 1 of 3: the fraction of this record's mass that InMAP's sr.Reader.layerFracs charges to SR emission layer 0. w_sr0 + w_sr1 + w_sr2 == 1 for every record, so no mass is created or lost; a record is SPLIT across two SR layers whenever its model layer falls strictly between two entries of `layers` = [0, 3, 6], and lands wholly in one layer otherwise. Layer 0 takes a record whose plume never leaves model layer 0 (including every zero-height stack), plus the frac_lo share of one that stopped in model layer 1 or 2. Layer-by-layer, with M = plume_model_layer: M == 0 -> (1, 0, 0); M in {1, 2} -> (frac_lo, 1 - frac_lo, 0); M == 3 -> (0, 1, 0); M in {4, 5} -> (0, frac_hi, 1 - frac_hi); M == 6 -> (0, 0, 1), which by saturation also covers every model layer above 6. A record outside the grid gets M == 0 and hence w_sr0 == 1, which charges nothing anywhere because the containment factor in every E_* aggregate is 0 for it. INTERPOLATION IS INVERTED, AND THAT IS DELIBERATE. layerFracs returns `[]float64{frac, 1 - frac}` for `[]int{i, i+1}` \u2014 the LOWER SR layer gets `frac`, so a HIGHER plume puts MORE weight on the LOWER layer. That is a bug in InMAP. It conserves mass, so it does not bias the national total, and this document reproduces it because the point is to compute what InMAP computes. DO NOT \"fix\" it here: silently correcting it would make this document disagree with the service it is being reconciled against, for a reason nobody reading the totals could see."
+    },
+    "w_sr1": {
+     "type": "observed",
+     "units": "1",
+     "shape": [
+      "emis_records"
+     ],
+     "expression": {
+      "op": "aggregate",
+      "output_idx": [
+       "r"
+      ],
+      "ranges": {
+       "r": {
+        "from": "emis_records"
+       }
+      },
+      "args": [
+       "plume_model_layer",
+       "frac_lo",
+       "frac_hi"
+      ],
+      "expr": {
+       "op": "+",
+       "args": [
+        {
+         "op": "ifelse",
+         "args": [
+          {
+           "op": "or",
+           "args": [
+            {
+             "op": "==",
+             "args": [
+              {
+               "op": "index",
+               "args": [
+                "plume_model_layer",
+                "r"
+               ]
+              },
+              1.0
+             ]
+            },
+            {
+             "op": "==",
+             "args": [
+              {
+               "op": "index",
+               "args": [
+                "plume_model_layer",
+                "r"
+               ]
+              },
+              2.0
+             ]
+            }
+           ]
+          },
+          {
+           "op": "-",
+           "args": [
+            1.0,
+            {
+             "op": "index",
+             "args": [
+              "frac_lo",
+              "r"
+             ]
+            }
+           ]
+          },
+          0.0
+         ]
+        },
+        {
+         "op": "ifelse",
+         "args": [
+          {
+           "op": "==",
+           "args": [
+            {
+             "op": "index",
+             "args": [
+              "plume_model_layer",
+              "r"
+             ]
+            },
+            3.0
+           ]
+          },
+          1.0,
+          0.0
+         ]
+        },
+        {
+         "op": "ifelse",
+         "args": [
+          {
+           "op": "or",
+           "args": [
+            {
+             "op": "==",
+             "args": [
+              {
+               "op": "index",
+               "args": [
+                "plume_model_layer",
+                "r"
+               ]
+              },
+              4.0
+             ]
+            },
+            {
+             "op": "==",
+             "args": [
+              {
+               "op": "index",
+               "args": [
+                "plume_model_layer",
+                "r"
+               ]
+              },
+              5.0
+             ]
+            }
+           ]
+          },
+          {
+           "op": "index",
+           "args": [
+            "frac_hi",
+            "r"
+           ]
+          },
+          0.0
+         ]
+        }
+       ]
+      }
+     },
+     "description": "THE ANSWER PLUME RISE EXISTS TO PRODUCE, part 2 of 3: the fraction of this record's mass that InMAP's sr.Reader.layerFracs charges to SR emission layer 1. w_sr0 + w_sr1 + w_sr2 == 1 for every record, so no mass is created or lost; a record is SPLIT across two SR layers whenever its model layer falls strictly between two entries of `layers` = [0, 3, 6], and lands wholly in one layer otherwise. Layer 1 takes all of a record that stopped in model layer 3 \u2014 an exact match against `layers`[1] \u2014 plus the 1 - frac_lo share of one in model layer 1 or 2 and the frac_hi share of one in model layer 4 or 5. Layer-by-layer, with M = plume_model_layer: M == 0 -> (1, 0, 0); M in {1, 2} -> (frac_lo, 1 - frac_lo, 0); M == 3 -> (0, 1, 0); M in {4, 5} -> (0, frac_hi, 1 - frac_hi); M == 6 -> (0, 0, 1), which by saturation also covers every model layer above 6. A record outside the grid gets M == 0 and hence w_sr0 == 1, which charges nothing anywhere because the containment factor in every E_* aggregate is 0 for it. INTERPOLATION IS INVERTED, AND THAT IS DELIBERATE. layerFracs returns `[]float64{frac, 1 - frac}` for `[]int{i, i+1}` \u2014 the LOWER SR layer gets `frac`, so a HIGHER plume puts MORE weight on the LOWER layer. That is a bug in InMAP. It conserves mass, so it does not bias the national total, and this document reproduces it because the point is to compute what InMAP computes. DO NOT \"fix\" it here: silently correcting it would make this document disagree with the service it is being reconciled against, for a reason nobody reading the totals could see."
+    },
+    "w_sr2": {
+     "type": "observed",
+     "units": "1",
+     "shape": [
+      "emis_records"
+     ],
+     "expression": {
+      "op": "aggregate",
+      "output_idx": [
+       "r"
+      ],
+      "ranges": {
+       "r": {
+        "from": "emis_records"
+       }
+      },
+      "args": [
+       "plume_model_layer",
+       "frac_hi"
+      ],
+      "expr": {
+       "op": "+",
+       "args": [
+        {
+         "op": "ifelse",
+         "args": [
+          {
+           "op": "or",
+           "args": [
+            {
+             "op": "==",
+             "args": [
+              {
+               "op": "index",
+               "args": [
+                "plume_model_layer",
+                "r"
+               ]
+              },
+              4.0
+             ]
+            },
+            {
+             "op": "==",
+             "args": [
+              {
+               "op": "index",
+               "args": [
+                "plume_model_layer",
+                "r"
+               ]
+              },
+              5.0
+             ]
+            }
+           ]
+          },
+          {
+           "op": "-",
+           "args": [
+            1.0,
+            {
+             "op": "index",
+             "args": [
+              "frac_hi",
+              "r"
+             ]
+            }
+           ]
+          },
+          0.0
+         ]
+        },
+        {
+         "op": "ifelse",
+         "args": [
+          {
+           "op": "==",
+           "args": [
+            {
+             "op": "index",
+             "args": [
+              "plume_model_layer",
+              "r"
+             ]
+            },
+            6.0
+           ]
+          },
+          1.0,
+          0.0
+         ]
+        }
+       ]
+      }
+     },
+     "description": "THE ANSWER PLUME RISE EXISTS TO PRODUCE, part 3 of 3: the fraction of this record's mass that InMAP's sr.Reader.layerFracs charges to SR emission layer 2. w_sr0 + w_sr1 + w_sr2 == 1 for every record, so no mass is created or lost; a record is SPLIT across two SR layers whenever its model layer falls strictly between two entries of `layers` = [0, 3, 6], and lands wholly in one layer otherwise. Layer 2 takes all of a record at or above model layer 6 \u2014 an exact match against `layers`[2], or InMAP's AboveTopErr clamp, which plume_model_layer's saturation makes the same branch \u2014 plus the 1 - frac_hi share of one in model layer 4 or 5. Layer-by-layer, with M = plume_model_layer: M == 0 -> (1, 0, 0); M in {1, 2} -> (frac_lo, 1 - frac_lo, 0); M == 3 -> (0, 1, 0); M in {4, 5} -> (0, frac_hi, 1 - frac_hi); M == 6 -> (0, 0, 1), which by saturation also covers every model layer above 6. A record outside the grid gets M == 0 and hence w_sr0 == 1, which charges nothing anywhere because the containment factor in every E_* aggregate is 0 for it. INTERPOLATION IS INVERTED, AND THAT IS DELIBERATE. layerFracs returns `[]float64{frac, 1 - frac}` for `[]int{i, i+1}` \u2014 the LOWER SR layer gets `frac`, so a HIGHER plume puts MORE weight on the LOWER layer. That is a bug in InMAP. It conserves mass, so it does not bias the national total, and this document reproduces it because the point is to compute what InMAP computes. DO NOT \"fix\" it here: silently correcting it would make this document disagree with the service it is being reconciled against, for a reason nobody reading the totals could see."
+    },
+    "sr_lower": {
+     "type": "observed",
+     "units": "1",
+     "shape": [
+      "emis_records"
+     ],
+     "expression": {
+      "op": "aggregate",
+      "output_idx": [
+       "r"
+      ],
+      "ranges": {
+       "r": {
+        "from": "emis_records"
+       }
+      },
+      "args": [
+       "plume_model_layer"
+      ],
+      "expr": {
+       "op": "+",
+       "args": [
+        {
+         "op": "ifelse",
+         "args": [
+          {
+           "op": "or",
+           "args": [
+            {
+             "op": "==",
+             "args": [
+              {
+               "op": "index",
+               "args": [
+                "plume_model_layer",
+                "r"
+               ]
+              },
+              3.0
+             ]
+            },
+            {
+             "op": "==",
+             "args": [
+              {
+               "op": "index",
+               "args": [
+                "plume_model_layer",
+                "r"
+               ]
+              },
+              4.0
+             ]
+            },
+            {
+             "op": "==",
+             "args": [
+              {
+               "op": "index",
+               "args": [
+                "plume_model_layer",
+                "r"
+               ]
+              },
+              5.0
+             ]
+            },
+            {
+             "op": "==",
+             "args": [
+              {
+               "op": "index",
+               "args": [
+                "plume_model_layer",
+                "r"
+               ]
+              },
+              6.0
+             ]
+            }
+           ]
+          },
+          1.0,
+          0.0
+         ]
+        },
+        {
+         "op": "ifelse",
+         "args": [
+          {
+           "op": "==",
+           "args": [
+            {
+             "op": "index",
+             "args": [
+              "plume_model_layer",
+              "r"
+             ]
+            },
+            6.0
+           ]
+          },
+          1.0,
+          0.0
+         ]
+        }
+       ]
+      }
+     },
+     "description": "The LOWER of the (at most two) SR emission layers this record's mass is charged to \u2014 the index layerFracs returns first. 0 for a plume at or below model layer 2, 1 for model layers 3 to 5, 2 for model layer 6 and above. It is an integer-valued label, so it is what the cross-binding contract can compare EXACTLY (the weights beside it are floats); together with w_sr<n> it reconstructs the whole assignment, since the upper layer, when there is one, is always sr_lower + 1. It replaces the old single-layer `plume_layer`, which stopped describing the model the moment a record could be split across two layers."
     },
     "E_VOC_L0": {
      "type": "observed",
@@ -6396,7 +7722,7 @@
        "Y",
        "emis_annual",
        "is_VOC",
-       "plume_layer"
+       "w_sr0"
       ],
       "expr": {
        "op": "*",
@@ -6507,23 +7833,10 @@
            ]
           },
           {
-           "op": "ifelse",
+           "op": "index",
            "args": [
-            {
-             "op": "==",
-             "args": [
-              {
-               "op": "index",
-               "args": [
-                "plume_layer",
-                "r"
-               ]
-              },
-              0.0
-             ]
-            },
-            1.0,
-            0.0
+            "w_sr0",
+            "r"
            ]
           }
          ]
@@ -6531,7 +7844,7 @@
        ]
       }
      },
-     "description": "VOC emissions binned into each source cell from the records whose plume reaches SR emission layer 0: sum over records r contained in cell c of annual[r]*is_VOC[r]*[plume_layer[r] == 0]. The containment ifelse MUST stay the FIRST ifelse in this body and the layer gate second: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently."
+     "description": "VOC emissions binned into each source cell from the SR-emission-layer-0 share of every record's mass: sum over records r contained in cell c of annual[r]*is_VOC[r]*w_sr0[r]. w_sr0 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
     },
     "E_VOC_L1": {
      "type": "observed",
@@ -6562,7 +7875,7 @@
        "Y",
        "emis_annual",
        "is_VOC",
-       "plume_layer"
+       "w_sr1"
       ],
       "expr": {
        "op": "*",
@@ -6673,23 +7986,10 @@
            ]
           },
           {
-           "op": "ifelse",
+           "op": "index",
            "args": [
-            {
-             "op": "==",
-             "args": [
-              {
-               "op": "index",
-               "args": [
-                "plume_layer",
-                "r"
-               ]
-              },
-              1.0
-             ]
-            },
-            1.0,
-            0.0
+            "w_sr1",
+            "r"
            ]
           }
          ]
@@ -6697,7 +7997,7 @@
        ]
       }
      },
-     "description": "VOC emissions binned into each source cell from the records whose plume reaches SR emission layer 1: sum over records r contained in cell c of annual[r]*is_VOC[r]*[plume_layer[r] == 1]. The containment ifelse MUST stay the FIRST ifelse in this body and the layer gate second: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently."
+     "description": "VOC emissions binned into each source cell from the SR-emission-layer-1 share of every record's mass: sum over records r contained in cell c of annual[r]*is_VOC[r]*w_sr1[r]. w_sr1 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
     },
     "E_VOC_L2": {
      "type": "observed",
@@ -6728,7 +8028,7 @@
        "Y",
        "emis_annual",
        "is_VOC",
-       "plume_layer"
+       "w_sr2"
       ],
       "expr": {
        "op": "*",
@@ -6839,23 +8139,10 @@
            ]
           },
           {
-           "op": "ifelse",
+           "op": "index",
            "args": [
-            {
-             "op": "==",
-             "args": [
-              {
-               "op": "index",
-               "args": [
-                "plume_layer",
-                "r"
-               ]
-              },
-              2.0
-             ]
-            },
-            1.0,
-            0.0
+            "w_sr2",
+            "r"
            ]
           }
          ]
@@ -6863,7 +8150,7 @@
        ]
       }
      },
-     "description": "VOC emissions binned into each source cell from the records whose plume reaches SR emission layer 2: sum over records r contained in cell c of annual[r]*is_VOC[r]*[plume_layer[r] == 2]. The containment ifelse MUST stay the FIRST ifelse in this body and the layer gate second: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently."
+     "description": "VOC emissions binned into each source cell from the SR-emission-layer-2 share of every record's mass: sum over records r contained in cell c of annual[r]*is_VOC[r]*w_sr2[r]. w_sr2 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
     },
     "E_NOx_L0": {
      "type": "observed",
@@ -6894,7 +8181,7 @@
        "Y",
        "emis_annual",
        "is_NOx",
-       "plume_layer"
+       "w_sr0"
       ],
       "expr": {
        "op": "*",
@@ -7005,23 +8292,10 @@
            ]
           },
           {
-           "op": "ifelse",
+           "op": "index",
            "args": [
-            {
-             "op": "==",
-             "args": [
-              {
-               "op": "index",
-               "args": [
-                "plume_layer",
-                "r"
-               ]
-              },
-              0.0
-             ]
-            },
-            1.0,
-            0.0
+            "w_sr0",
+            "r"
            ]
           }
          ]
@@ -7029,7 +8303,7 @@
        ]
       }
      },
-     "description": "NOx emissions binned into each source cell from the records whose plume reaches SR emission layer 0: sum over records r contained in cell c of annual[r]*is_NOx[r]*[plume_layer[r] == 0]. The containment ifelse MUST stay the FIRST ifelse in this body and the layer gate second: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently."
+     "description": "NOx emissions binned into each source cell from the SR-emission-layer-0 share of every record's mass: sum over records r contained in cell c of annual[r]*is_NOx[r]*w_sr0[r]. w_sr0 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
     },
     "E_NOx_L1": {
      "type": "observed",
@@ -7060,7 +8334,7 @@
        "Y",
        "emis_annual",
        "is_NOx",
-       "plume_layer"
+       "w_sr1"
       ],
       "expr": {
        "op": "*",
@@ -7171,23 +8445,10 @@
            ]
           },
           {
-           "op": "ifelse",
+           "op": "index",
            "args": [
-            {
-             "op": "==",
-             "args": [
-              {
-               "op": "index",
-               "args": [
-                "plume_layer",
-                "r"
-               ]
-              },
-              1.0
-             ]
-            },
-            1.0,
-            0.0
+            "w_sr1",
+            "r"
            ]
           }
          ]
@@ -7195,7 +8456,7 @@
        ]
       }
      },
-     "description": "NOx emissions binned into each source cell from the records whose plume reaches SR emission layer 1: sum over records r contained in cell c of annual[r]*is_NOx[r]*[plume_layer[r] == 1]. The containment ifelse MUST stay the FIRST ifelse in this body and the layer gate second: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently."
+     "description": "NOx emissions binned into each source cell from the SR-emission-layer-1 share of every record's mass: sum over records r contained in cell c of annual[r]*is_NOx[r]*w_sr1[r]. w_sr1 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
     },
     "E_NOx_L2": {
      "type": "observed",
@@ -7226,7 +8487,7 @@
        "Y",
        "emis_annual",
        "is_NOx",
-       "plume_layer"
+       "w_sr2"
       ],
       "expr": {
        "op": "*",
@@ -7337,23 +8598,10 @@
            ]
           },
           {
-           "op": "ifelse",
+           "op": "index",
            "args": [
-            {
-             "op": "==",
-             "args": [
-              {
-               "op": "index",
-               "args": [
-                "plume_layer",
-                "r"
-               ]
-              },
-              2.0
-             ]
-            },
-            1.0,
-            0.0
+            "w_sr2",
+            "r"
            ]
           }
          ]
@@ -7361,7 +8609,7 @@
        ]
       }
      },
-     "description": "NOx emissions binned into each source cell from the records whose plume reaches SR emission layer 2: sum over records r contained in cell c of annual[r]*is_NOx[r]*[plume_layer[r] == 2]. The containment ifelse MUST stay the FIRST ifelse in this body and the layer gate second: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently."
+     "description": "NOx emissions binned into each source cell from the SR-emission-layer-2 share of every record's mass: sum over records r contained in cell c of annual[r]*is_NOx[r]*w_sr2[r]. w_sr2 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
     },
     "E_NH3_L0": {
      "type": "observed",
@@ -7392,7 +8640,7 @@
        "Y",
        "emis_annual",
        "is_NH3",
-       "plume_layer"
+       "w_sr0"
       ],
       "expr": {
        "op": "*",
@@ -7503,23 +8751,10 @@
            ]
           },
           {
-           "op": "ifelse",
+           "op": "index",
            "args": [
-            {
-             "op": "==",
-             "args": [
-              {
-               "op": "index",
-               "args": [
-                "plume_layer",
-                "r"
-               ]
-              },
-              0.0
-             ]
-            },
-            1.0,
-            0.0
+            "w_sr0",
+            "r"
            ]
           }
          ]
@@ -7527,7 +8762,7 @@
        ]
       }
      },
-     "description": "NH3 emissions binned into each source cell from the records whose plume reaches SR emission layer 0: sum over records r contained in cell c of annual[r]*is_NH3[r]*[plume_layer[r] == 0]. The containment ifelse MUST stay the FIRST ifelse in this body and the layer gate second: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently."
+     "description": "NH3 emissions binned into each source cell from the SR-emission-layer-0 share of every record's mass: sum over records r contained in cell c of annual[r]*is_NH3[r]*w_sr0[r]. w_sr0 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
     },
     "E_NH3_L1": {
      "type": "observed",
@@ -7558,7 +8793,7 @@
        "Y",
        "emis_annual",
        "is_NH3",
-       "plume_layer"
+       "w_sr1"
       ],
       "expr": {
        "op": "*",
@@ -7669,23 +8904,10 @@
            ]
           },
           {
-           "op": "ifelse",
+           "op": "index",
            "args": [
-            {
-             "op": "==",
-             "args": [
-              {
-               "op": "index",
-               "args": [
-                "plume_layer",
-                "r"
-               ]
-              },
-              1.0
-             ]
-            },
-            1.0,
-            0.0
+            "w_sr1",
+            "r"
            ]
           }
          ]
@@ -7693,7 +8915,7 @@
        ]
       }
      },
-     "description": "NH3 emissions binned into each source cell from the records whose plume reaches SR emission layer 1: sum over records r contained in cell c of annual[r]*is_NH3[r]*[plume_layer[r] == 1]. The containment ifelse MUST stay the FIRST ifelse in this body and the layer gate second: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently."
+     "description": "NH3 emissions binned into each source cell from the SR-emission-layer-1 share of every record's mass: sum over records r contained in cell c of annual[r]*is_NH3[r]*w_sr1[r]. w_sr1 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
     },
     "E_NH3_L2": {
      "type": "observed",
@@ -7724,7 +8946,7 @@
        "Y",
        "emis_annual",
        "is_NH3",
-       "plume_layer"
+       "w_sr2"
       ],
       "expr": {
        "op": "*",
@@ -7835,23 +9057,10 @@
            ]
           },
           {
-           "op": "ifelse",
+           "op": "index",
            "args": [
-            {
-             "op": "==",
-             "args": [
-              {
-               "op": "index",
-               "args": [
-                "plume_layer",
-                "r"
-               ]
-              },
-              2.0
-             ]
-            },
-            1.0,
-            0.0
+            "w_sr2",
+            "r"
            ]
           }
          ]
@@ -7859,7 +9068,7 @@
        ]
       }
      },
-     "description": "NH3 emissions binned into each source cell from the records whose plume reaches SR emission layer 2: sum over records r contained in cell c of annual[r]*is_NH3[r]*[plume_layer[r] == 2]. The containment ifelse MUST stay the FIRST ifelse in this body and the layer gate second: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently."
+     "description": "NH3 emissions binned into each source cell from the SR-emission-layer-2 share of every record's mass: sum over records r contained in cell c of annual[r]*is_NH3[r]*w_sr2[r]. w_sr2 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
     },
     "E_SOx_L0": {
      "type": "observed",
@@ -7890,7 +9099,7 @@
        "Y",
        "emis_annual",
        "is_SOx",
-       "plume_layer"
+       "w_sr0"
       ],
       "expr": {
        "op": "*",
@@ -8001,23 +9210,10 @@
            ]
           },
           {
-           "op": "ifelse",
+           "op": "index",
            "args": [
-            {
-             "op": "==",
-             "args": [
-              {
-               "op": "index",
-               "args": [
-                "plume_layer",
-                "r"
-               ]
-              },
-              0.0
-             ]
-            },
-            1.0,
-            0.0
+            "w_sr0",
+            "r"
            ]
           }
          ]
@@ -8025,7 +9221,7 @@
        ]
       }
      },
-     "description": "SOx emissions binned into each source cell from the records whose plume reaches SR emission layer 0: sum over records r contained in cell c of annual[r]*is_SOx[r]*[plume_layer[r] == 0]. The containment ifelse MUST stay the FIRST ifelse in this body and the layer gate second: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently."
+     "description": "SOx emissions binned into each source cell from the SR-emission-layer-0 share of every record's mass: sum over records r contained in cell c of annual[r]*is_SOx[r]*w_sr0[r]. w_sr0 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
     },
     "E_SOx_L1": {
      "type": "observed",
@@ -8056,7 +9252,7 @@
        "Y",
        "emis_annual",
        "is_SOx",
-       "plume_layer"
+       "w_sr1"
       ],
       "expr": {
        "op": "*",
@@ -8167,23 +9363,10 @@
            ]
           },
           {
-           "op": "ifelse",
+           "op": "index",
            "args": [
-            {
-             "op": "==",
-             "args": [
-              {
-               "op": "index",
-               "args": [
-                "plume_layer",
-                "r"
-               ]
-              },
-              1.0
-             ]
-            },
-            1.0,
-            0.0
+            "w_sr1",
+            "r"
            ]
           }
          ]
@@ -8191,7 +9374,7 @@
        ]
       }
      },
-     "description": "SOx emissions binned into each source cell from the records whose plume reaches SR emission layer 1: sum over records r contained in cell c of annual[r]*is_SOx[r]*[plume_layer[r] == 1]. The containment ifelse MUST stay the FIRST ifelse in this body and the layer gate second: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently."
+     "description": "SOx emissions binned into each source cell from the SR-emission-layer-1 share of every record's mass: sum over records r contained in cell c of annual[r]*is_SOx[r]*w_sr1[r]. w_sr1 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
     },
     "E_SOx_L2": {
      "type": "observed",
@@ -8222,7 +9405,7 @@
        "Y",
        "emis_annual",
        "is_SOx",
-       "plume_layer"
+       "w_sr2"
       ],
       "expr": {
        "op": "*",
@@ -8333,23 +9516,10 @@
            ]
           },
           {
-           "op": "ifelse",
+           "op": "index",
            "args": [
-            {
-             "op": "==",
-             "args": [
-              {
-               "op": "index",
-               "args": [
-                "plume_layer",
-                "r"
-               ]
-              },
-              2.0
-             ]
-            },
-            1.0,
-            0.0
+            "w_sr2",
+            "r"
            ]
           }
          ]
@@ -8357,7 +9527,7 @@
        ]
       }
      },
-     "description": "SOx emissions binned into each source cell from the records whose plume reaches SR emission layer 2: sum over records r contained in cell c of annual[r]*is_SOx[r]*[plume_layer[r] == 2]. The containment ifelse MUST stay the FIRST ifelse in this body and the layer gate second: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently."
+     "description": "SOx emissions binned into each source cell from the SR-emission-layer-2 share of every record's mass: sum over records r contained in cell c of annual[r]*is_SOx[r]*w_sr2[r]. w_sr2 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
     },
     "E_PM25_L0": {
      "type": "observed",
@@ -8388,7 +9558,7 @@
        "Y",
        "emis_annual",
        "is_PM25",
-       "plume_layer"
+       "w_sr0"
       ],
       "expr": {
        "op": "*",
@@ -8499,23 +9669,10 @@
            ]
           },
           {
-           "op": "ifelse",
+           "op": "index",
            "args": [
-            {
-             "op": "==",
-             "args": [
-              {
-               "op": "index",
-               "args": [
-                "plume_layer",
-                "r"
-               ]
-              },
-              0.0
-             ]
-            },
-            1.0,
-            0.0
+            "w_sr0",
+            "r"
            ]
           }
          ]
@@ -8523,7 +9680,7 @@
        ]
       }
      },
-     "description": "PM2.5 emissions binned into each source cell from the records whose plume reaches SR emission layer 0: sum over records r contained in cell c of annual[r]*is_PM25[r]*[plume_layer[r] == 0]. The containment ifelse MUST stay the FIRST ifelse in this body and the layer gate second: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently."
+     "description": "PM25 emissions binned into each source cell from the SR-emission-layer-0 share of every record's mass: sum over records r contained in cell c of annual[r]*is_PM25[r]*w_sr0[r]. w_sr0 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
     },
     "E_PM25_L1": {
      "type": "observed",
@@ -8554,7 +9711,7 @@
        "Y",
        "emis_annual",
        "is_PM25",
-       "plume_layer"
+       "w_sr1"
       ],
       "expr": {
        "op": "*",
@@ -8665,23 +9822,10 @@
            ]
           },
           {
-           "op": "ifelse",
+           "op": "index",
            "args": [
-            {
-             "op": "==",
-             "args": [
-              {
-               "op": "index",
-               "args": [
-                "plume_layer",
-                "r"
-               ]
-              },
-              1.0
-             ]
-            },
-            1.0,
-            0.0
+            "w_sr1",
+            "r"
            ]
           }
          ]
@@ -8689,7 +9833,7 @@
        ]
       }
      },
-     "description": "PM2.5 emissions binned into each source cell from the records whose plume reaches SR emission layer 1: sum over records r contained in cell c of annual[r]*is_PM25[r]*[plume_layer[r] == 1]. The containment ifelse MUST stay the FIRST ifelse in this body and the layer gate second: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently."
+     "description": "PM25 emissions binned into each source cell from the SR-emission-layer-1 share of every record's mass: sum over records r contained in cell c of annual[r]*is_PM25[r]*w_sr1[r]. w_sr1 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
     },
     "E_PM25_L2": {
      "type": "observed",
@@ -8720,7 +9864,7 @@
        "Y",
        "emis_annual",
        "is_PM25",
-       "plume_layer"
+       "w_sr2"
       ],
       "expr": {
        "op": "*",
@@ -8831,23 +9975,10 @@
            ]
           },
           {
-           "op": "ifelse",
+           "op": "index",
            "args": [
-            {
-             "op": "==",
-             "args": [
-              {
-               "op": "index",
-               "args": [
-                "plume_layer",
-                "r"
-               ]
-              },
-              2.0
-             ]
-            },
-            1.0,
-            0.0
+            "w_sr2",
+            "r"
            ]
           }
          ]
@@ -8855,7 +9986,7 @@
        ]
       }
      },
-     "description": "PM2.5 emissions binned into each source cell from the records whose plume reaches SR emission layer 2: sum over records r contained in cell c of annual[r]*is_PM25[r]*[plume_layer[r] == 2]. The containment ifelse MUST stay the FIRST ifelse in this body and the layer gate second: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently."
+     "description": "PM25 emissions binned into each source cell from the SR-emission-layer-2 share of every record's mass: sum over records r contained in cell c of annual[r]*is_PM25[r]*w_sr2[r]. w_sr2 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
     },
     "conc_SOA_L0": {
      "type": "observed",
@@ -10699,6 +11830,12 @@
    "type": "variable_map",
    "from": "ISRM_Grid.LayerHeight",
    "to": "ISRM.LayerHeight",
+   "transform": "param_to_var"
+  },
+  {
+   "type": "variable_map",
+   "from": "ISRM_Grid.Dz",
+   "to": "ISRM.Dz",
    "transform": "param_to_var"
   },
   {

@@ -72,14 +72,14 @@
     "plume": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sr_layer", "stack_layer", "pathways"],
-      "description": "Plume rise: which of the SR matrix's three emission layers each record is charged to, and how much mass that puts in each layer. OPTIONAL only because records predating plume rise exist (contract/records/ground-level-only/); every record from a document that states plume rise MUST carry it, and a runner that omits it is not reporting the physics it computed. Everything here comes from the document's own `plume_layer` / `stack_layer` observeds and its `E_<pathway>_L<layer>` binning aggregates — a runner recomputing any of it would be asserting on its own arithmetic instead of on the spec. The layer assignments are INTEGER-valued, so like `ppl` they are compared EXACTLY (see compare_results.py); `contract/records/plume_oracle.json` is the independent, SR-free reference they are checked against.",
+      "required": ["sr_lower", "stack_layer", "weights", "pathways"],
+      "description": "Plume rise: how each record's mass is split across the SR matrix's three emission layers, and how much mass that puts in each layer. OPTIONAL only because records predating plume rise exist (contract/records/ground-level-only/); every record from a document that states plume rise MUST carry it, and a runner that omits it is not reporting the physics it computed. Everything here comes from the document's own `sr_lower` / `stack_layer` / `w_sr0..2` observeds and its `E_<pathway>_L<layer>` binning aggregates — a runner recomputing any of it would be asserting on its own arithmetic instead of on the spec. NOTE THE SHAPE CHANGE: a record used to be charged to ONE SR layer, and this block carried a per-record `sr_layer` digest. InMAP's sr.Reader.layerFracs splits a record across TWO layers whenever its model layer falls strictly between two entries of `layers` = [0, 3, 6], so a single per-record layer no longer describes the model and `sr_layer` is gone. What replaces it: `sr_lower`, the integer index of the lower of the (at most two) layers, compared EXACTLY the way `ppl` is; `weights`, the three float shares, compared the way every other float in this record is; and `pathways`, the emitted mass per SR layer, which is what the contract really checks. `contract/records/plume_oracle.json` is the independent, SR-free reference all of it is checked against.",
       "properties": {
-        "sr_layer": {
+        "sr_lower": {
           "type": "object",
           "additionalProperties": false,
           "required": ["count", "histogram", "sha256"],
-          "description": "The document's `plume_layer` observed, one value per emission record: the SR emission layer (0, 1 or 2) the record's plume reaches, already carrying InMAP's clamp (model layers 3..26 all clamp to SR layer 2). THE quantity plume rise exists to produce — every downstream number follows from it.",
+          "description": "The document's `sr_lower` observed, one value per emission record: the LOWER of the (at most two) SR emission layers the record's mass is charged to — the index sr.Reader.layerFracs returns first. 0 for a plume at or below model layer 2, 1 for model layers 3-5, 2 for model layer 6 and above (which folds in InMAP's AboveTopErr clamp). Integer-valued, so it is compared EXACTLY; together with `weights` it reconstructs the whole assignment, because the upper layer, when there is one, is always sr_lower + 1.",
           "properties": {
             "count": {"type": "integer", "description": "Number of records hashed; equals grid.n_rec."},
             "histogram": {
@@ -87,20 +87,36 @@
               "items": {"type": "integer"},
               "minItems": 3,
               "maxItems": 3,
-              "description": "Record counts in SR layers 0, 1, 2. [12108, 9155, 22387] at full scale."
+              "description": "Record counts by lower SR layer 0, 1, 2."
             },
             "sha256": {
               "type": "string",
               "pattern": "^[0-9a-f]{64}$",
-              "description": "sha256 over the per-record SR layer as ASCII decimals joined by \",\" in RECORD ORDER (int_seq_sha256 in results.py/.jl/contract.rs) — the same wire format as ppl_sha256 but unsorted, because a per-record field is a sequence whose order is part of the value. 808e0971a2eda1de1ffc53e242f7ea3fd9bbbda85c3b61702a56f71dd12b434b at full scale."
+              "description": "sha256 over the per-record lower SR layer as ASCII decimals joined by \",\" in RECORD ORDER (int_seq_sha256 in results.py/.jl/contract.rs) — the same wire format as ppl_sha256 but unsorted, because a per-record field is a sequence whose order is part of the value."
             }
+          }
+        },
+        "weights": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["count", "max_sum_error", "w_sr0", "w_sr1", "w_sr2"],
+          "description": "The document's `w_sr0` / `w_sr1` / `w_sr2` observeds — sr.Reader.layerFracs's per-record fractions, one field of length grid.n_rec each. These are FLOATS, unlike the layer assignment they replace, so they carry the same FieldSummary shape and the same tolerance as every other float field here: `sum`/`min`/`max`/`sample` within RTOL_FIELD, `sha256` informative rather than asserted (the fractions descend from `plume_height`, whose cube roots differ by an ulp between languages, so bit-identity across bindings is not expected). The teeth are elsewhere: `sr_lower` is exact, and `pathways.by_sr_layer` is these weights integrated against emitted mass.",
+          "properties": {
+            "count": {"type": "integer", "description": "Number of records; equals grid.n_rec."},
+            "max_sum_error": {
+              "type": "number",
+              "description": "max over records of |w_sr0 + w_sr1 + w_sr2 - 1|. layerFracs conserves mass — every record's weights sum to exactly 1 — so this is float noise (~1e-16) or a broken document. Checked against an ABSOLUTE bound, not a relative one."
+            },
+            "w_sr0": {"$ref": "#/$defs/FieldSummary", "description": "Share of each record's mass charged to SR emission layer 0."},
+            "w_sr1": {"$ref": "#/$defs/FieldSummary", "description": "Share of each record's mass charged to SR emission layer 1."},
+            "w_sr2": {"$ref": "#/$defs/FieldSummary", "description": "Share of each record's mass charged to SR emission layer 2."}
           }
         },
         "stack_layer": {
           "type": "object",
           "additionalProperties": false,
           "required": ["count", "histogram", "sha256"],
-          "description": "The document's `stack_layer` observed: the model layer the STACK TOP sits in, which selects the meteorology plume rise is computed from. Separate from sr_layer because it localizes a disagreement — a wrong stack_layer means the met gather is wrong, a right stack_layer with a wrong sr_layer means the ASME expression is.",
+          "description": "The document's `stack_layer` observed: the model layer the STACK TOP sits in, which selects the meteorology plume rise is computed from. Separate from sr_lower because it localizes a disagreement — a wrong stack_layer means the met gather is wrong, a right stack_layer with a wrong SR assignment means the ASME expression or the layerFracs interpolation is.",
           "properties": {
             "count": {"type": "integer"},
             "histogram": {
@@ -125,7 +141,7 @@
                 "items": {"type": "number"},
                 "minItems": 3,
                 "maxItems": 3,
-                "description": "Sum over source cells of E_<pathway>_L0, _L1, _L2 (tons/yr). Their total is the pathway's `emis_sum` — plume rise moves mass between layers, never into or out of a pathway."
+                "description": "Sum over source cells of E_<pathway>_L0, _L1, _L2 (tons/yr) — the per-record layerFracs weights integrated against emitted mass. Their total is the pathway's `emis_sum` — plume rise moves mass between layers, never into or out of a pathway, and a record split across two layers contributes a share to each."
               }
             }
           }

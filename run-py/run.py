@@ -65,6 +65,12 @@ ORACLE_L = 15623.924632
 #: misplaced group is 0.43% of emitted mass but buys about twice that in
 #: deaths, because putting it back on the cells the emissions came from puts it
 #: back over people. This threshold sits just above what was measured.
+#: STALE, and left in place only as a loose upper bound: it was fitted to a
+#: full-scale run that predates sr.Reader.layerFracs and the [0, 3, 6] fix, and
+#: no full-scale run of the current document has been made. At reduced scale the
+#: document now reproduces the live inmap cloud service to 9e-9, so the real
+#: threshold is expected to be far tighter — see SERVICE_DEATHS in
+#: contract/compare_results.py.
 ORACLE_NOTABLE_REL = 8.3e-3
 
 #: zarr array name -> (the per-SR-layer emissions observeds, concentration
@@ -299,16 +305,23 @@ def main() -> int:
         # How much mass plume rise put in each SR layer — the physics made
         # visible as tons, per pathway.
         emis_by_layer[arr] = [float(e.sum()) for e in es]
-    # The layer assignment itself. These are the document's OWN observeds, read
-    # through the same `observed_field` path as everything else — this runner
-    # does not know what ASME is, and must not: the point of the contract's
-    # `plume` block is that the ENGINE produced the assignment from the spec.
-    # contract/plume_oracle.py computes the same quantity independently, from
-    # the meteorology arrays and without the SR matrix, and compare_results.py
-    # checks the two against each other.
+    # The layer assignment itself — now a SPLIT, not a single layer: InMAP's
+    # sr.Reader.layerFracs charges a record to two SR layers whenever its model
+    # layer falls between two entries of `layers`. `sr_lower` is the lower index
+    # (integer, compared exactly) and w_sr0/1/2 are the three shares. These are
+    # the document's OWN observeds, read through the same `observed_field` path
+    # as everything else — this runner does not know what ASME is, and must not:
+    # the point of the contract's `plume` block is that the ENGINE produced the
+    # assignment from the spec. contract/plume_oracle.py computes the same
+    # quantity independently, from the meteorology arrays and without the SR
+    # matrix, and compare_results.py checks the two against each other.
+    def per_record(name):
+        return np.asarray(observed_field(prep, name), dtype=float).ravel()
+
     plume = contract.plume_block(
-        plume_layer=np.asarray(observed_field(prep, "plume_layer"), dtype=float).ravel(),
-        stack_layer=np.asarray(observed_field(prep, "stack_layer"), dtype=float).ravel(),
+        sr_lower=per_record("sr_lower"),
+        stack_layer=per_record("stack_layer"),
+        weights={w: per_record(w) for w in ("w_sr0", "w_sr1", "w_sr2")},
         emis_by_sr_layer=emis_by_layer,
     )
     t_eval = time.time() - t
@@ -331,8 +344,13 @@ def main() -> int:
                 "(0.43% of emitted mass, +0.79%/+0.82% of deaths at full scale), "
                 "so something else differs."
             )
-    log(f"  SR-layer histogram (records per layer 0/1/2) = {plume['sr_layer']['histogram']}")
-    log(f"  sr_layer sha256 = {plume['sr_layer']['sha256']}")
+    log("  lower-SR-layer histogram (records per layer 0/1/2) = "
+        f"{plume['sr_lower']['histogram']}")
+    log(f"  sr_lower sha256 = {plume['sr_lower']['sha256']}")
+    log("  Σ w_sr0/w_sr1/w_sr2 = "
+        + " / ".join(repr(plume["weights"][w]["sum"])
+                     for w in ("w_sr0", "w_sr1", "w_sr2"))
+        + f"   max|Σw - 1| = {plume['weights']['max_sum_error']!r}")
     log(
         "    (check it against `python3 contract/plume_oracle.py"
         + (f" --firstn {firstn}`" if reduced else "`")
