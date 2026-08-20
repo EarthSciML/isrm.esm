@@ -75,65 +75,62 @@ SR cache, 4,130 s observed eval, 19.2 GiB peak. Python cannot load this
 document today and Rust has only run it at reduced scale — see
 [What runs today](#what-runs-today).
 
-### The published totals are not reachable by any layer assignment
+### The gap was a corrupt array in the published zarr
 
-Plume rise should have removed about 8% and removed about 19%. Chasing that
-produced a stronger result than a corrected number: **the tutorial's published
-pair cannot be produced from `isrm_v1.2.1` by InMAP's own algorithm**, whatever
-the plume rise does.
+The tutorial's numbers **are** exactly reproducible. Re-running the blog's own
+path through the live `inmap cloud` service, with the same 43,650 records,
+returns `6928.959583` / `15623.924632` — every printed digit.
 
-Deaths are near-linear in the layer assignment, so the whole space can be
-enumerated. Full scale, contracted directly off the zarr with no engine
-(reproducing the engine to 2.5e-14):
+The cause is one array. The SR store's `layers` variable holds the **model**
+layer indices the SR calculation was performed for, and:
 
-| assignment | deathsK | deathsL |
-|---|---|---|
-| every record → SR layer 0 | 7524.918950 | 16979.632407 |
-| every record → SR layer 1 | 7145.784995 | 16115.419710 |
-| every record → SR layer 2 | 5803.346207 | 13080.649455 |
-| this document | 6063.777261 | 13668.309908 |
-| this document + InMAP's high-plume index defect | 6088.681918 | 13724.286771 |
-| every record at its own stack's layer (ΔH ≡ 0) | 6674.494133 | 15048.568912 |
-| **ceiling: the best any admissible assignment can do** | **6697.553122** | 15100.721913 |
-| blog (InMAP) | **6928.959583** | **15623.924632** |
+| source | `layers` |
+|---|---|
+| `isrm_v1.2.1.ncf` (Zenodo) | **`[0, 3, 6]`** |
+| `isrm_v1.2.1.zarr` (this store) | `[0, 1, 2]` |
 
-InMAP's ΔH is non-negative in every branch of `calcDeltaHPrecomputed`, and
-`findLayer` is monotone in height, so **every record must land at a layer at or
-above its own stack's layer**. That bounds `deathsK` at `6697.55`. The published
-`6928.96` is **3.46% above that ceiling**, and `deathsL` is 3.5% above its
-ceiling too. Reaching it would require emitting *below* the layer the stack sits
-in, which InMAP's code cannot do. Even ΔH ≡ 0 — no plume rise at all, every
-record at its stack's own layer — gives `6674.49`, still 3.67% short.
+`[0,1,2]` is a machine-generated arange that displaced the real variable during
+the zarr conversion. Corroboration, independent of the NetCDF: `sr/sr.go`
+attaches `description: "Layer indices for which the SR calculation was
+performed"` to `layers`, and the zarr's copy has **no attributes at all** while
+neighbouring InMAP variables like `LayerHeight` and `Dz` keep theirs. Zenodo's
+description calls the three heights "ground-level, low-stack, and high-stack" —
+which `[0,3,6]` (0–58 m, 253–391 m, 786–1049 m) is and `[0,1,2]` (three
+adjacent near-surface layers, all under 245 m) is not. The same conversion pass
+also lost the per-cell `Layer` variable and stripped `.zattrs` from the SR
+arrays — which is why this repo has always needed `seed_empty_zattrs`.
 
-So at least ~3.5% of the discrepancy is a **magnitude** difference, not a
-vertical one, and the vertical part cannot account for the rest. A mixture on
-the L0→L2 axis does hit `6928.96` (α = 0.3455 against our 0.849), and it
-satisfies the independent `deathsL` constraint to 0.018% — so our concentration
-fields are not grossly wrong in pattern or scale — but that mixture is not
-admissible for the reason above.
+**The matrix data itself is fine.** The Zenodo `.zip` is md5-identical between
+its 2019-03-11 and 2019-12-22 depositions, and SR rows streamed out of it are
+byte-identical to the zarr's. Nothing was rescaled; one index array was
+replaced.
 
-Two candidate mechanisms were closed out by reading InMAP's source rather than
-guessing. `layerFracs`'s cell-centre interpolation branch is **dead code** for
-this matrix (`sr.layers` is contiguous `[0,1,2]`, so every cell takes either the
-exact-match or the above-top branch), and `sr/srreader.go` is byte-identical
-between the last commit before the blog and master. `IsPlumeIn`'s cumulative-`Dz`
-column equals the store's `LayerHeight` exactly, so bottoms-versus-cumsum is a
-distinction without a difference. The 9,437 m maximum plume height is a genuine
-ASME output that InMAP permits — its real column runs to model layer 26 — and
-the records whose plumes leave the ground grid are the same 0.43% of mass either
-way.
+Consequences for this document, which read `layers` as `[0,1,2]` and therefore
+assigned `sr_layer = min(plume_layer, 2)`:
 
-**The high-plume source-index defect is worth 24.90 deaths (+0.41%), not 865.**
-An earlier version of this README attributed the whole residual to it. That was
-wrong, and it is why the attribution is now measured rather than argued.
+* InMAP's `layerFracs` splits an emission between **two** SR layers whenever
+  its model layer falls between the entries of `layers` — model layers 1–2
+  between SR 0 and 1, layers 4–5 between SR 1 and 2. That two-layer
+  interpolation is **live**, not the dead code an earlier reading of this file
+  claimed, and it interpolates on cell-**centre** heights.
+* We put mass far higher in the SR stack than InMAP does, and lower SR layers
+  carry more deaths, so we ran low. On the first 200 records: ours
+  `47.780033`, InMAP's scheme `49.279523`, the live service `49.091470`.
+  Switching only `layers` closes ~88% of the gap; a +0.38% residual is still
+  open.
+* An earlier revision of this README argued the published totals were
+  *unreachable* — 3.46% above a ceiling implied by non-negative plume rise.
+  That argument was sound given `layers = [0,1,2]` and worthless because the
+  premise was false. It is retracted.
 
-The likeliest remaining explanation is the matrix itself: the blog predates
-`isrm_v1.2.1`, and today's zarr conversion is known to be lossy in at least one
-respect — it dropped the per-cell `Layer` variable that InMAP's NetCDF must have
-carried, since `InsertCell`, `setNeighbors`, `VerticalProfile` and `sr.indices`
-all key on it. Settling it is now a one-parameter question about the matrix, not
-about the physics: fetch one SR row for a known source cell from the original
-`.ncf` and compare it against the same row in the zarr.
+One incidental InMAP bug found on the way, which this document must match to
+agree: `layerFracs` returns `{frac, 1-frac}` for `{lower, upper}` with
+`frac = (plumeHeight − below)/(above − below)`, so a **higher** plume gets
+**more** weight on the **lower** SR layer. The interpolation is inverted. It
+conserves mass, so it does not affect the reconciliation.
+
+`contract/`'s assertion that `layers == [0,1,2]` is asserting the corruption,
+and `layers` is the one upstream input from this store that cannot be trusted.
 
 > **An earlier full-scale total published here (`6983.9385617781645`, +0.79%)
 > was VOID** and its apparent agreement was a coincidence. It came from an
