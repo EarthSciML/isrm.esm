@@ -61,47 +61,70 @@ SR emission layer its plume reaches, which makes the contraction fifteen SR
 slabs (five pathways × three layers) rather than five.
 
 The tutorial's published totals are `sum(deathsK) = 6928.959583` and
-`sum(deathsL) = 15623.924632`. A correct run lands **near** them rather than
-on them, by construction — see [Plume rise](#plume-rise) for the one
-deliberate difference and what it costs.
+`sum(deathsL) = 15623.924632`. **This document does not currently reproduce
+them, and the gap got bigger when plume rise went in.**
 
-| binding | wall | `sum(deathsK)` | vs the blog |
-|---|---|---|---|
-| Julia | — | **re-run in progress** | |
-| Python | — | cannot load this document today | |
-| Rust | — | reduced scale only so far | |
+| | `sum(deathsK)` | vs the blog |
+|---|---|---|
+| every record at ground level (before plume rise) | 7524.918845602511 | +8.60% |
+| **with plume rise (Julia, full scale, 2026-08-20)** | **6063.777261048292** | **−12.49%** |
+| blog (InMAP) | 6928.959583 | — |
 
-> **The previously published full-scale total (`6983.9385617781645`, +0.79%) is
-> VOID.** It was produced by an engine that contracted three of the five
-> pathways against the wrong SR emission layer. Three sibling SR loaders each
-> expose `SOA`, `pNO3`, …, and the Julia and Python gated-fetch hook published
-> every fetched slab under an alias resolved by matching the *tail* of a dotted
-> name — so all three providers claimed all three keys and the last writer in
-> hash order won. Rust was immune and was right all along; the disagreement
+`sum(deathsL) = 13668.309907870665`, −12.52%. Julia: 722 s prepare on a warm
+SR cache, 4,130 s observed eval, 19.2 GiB peak. Python cannot load this
+document today and Rust has only run it at reduced scale — see
+[What runs today](#what-runs-today).
+
+Plume rise should have removed about 8% and removed about 19%. Interpolating
+between the two rows above, the blog sits at **40.8% of our elevation
+effect**: InMAP elevates roughly 40% as much mass as we do, or elevates it to
+lower layers. That is structural, about a layer's worth — not an accumulation
+of edge cases.
+
+**What is verified is that the document computes what we specified.** At full
+scale its per-record layer assignment matches
+[`contract/plume_oracle.py`](contract/plume_oracle.py) — an independent NumPy
+implementation written from InMAP's Go source rather than from this document —
+*exactly*: `sr_layer` sha256 `808e0971…`, histogram `[12108, 9155, 22387]`,
+`stack_layer` sha256 matching, and all fifteen per-pathway per-layer emission
+masses agreeing to ≤ 2.1e-16. Julia and Rust agree with each other and with a
+from-scratch numpy contraction. So the open question is not whether the
+implementation matches the specification; it is whether the **specification
+matches InMAP**, since a misreading of the Go source would be inherited by both.
+
+That is under investigation. Two leads: the SR store carries no per-cell
+`Layer` array, so InMAP reads `Cell.Layer` from its NetCDF while this document
+reconstructs the layer from cell ordering; and `IsPlumeIn` builds its column
+from cumulative `Dz` (layer tops) while `layerFracs` uses `VerticalProfile`,
+which returns cell-*centre* heights — a substitution anywhere in that chain
+moves mass down a layer, which is the right magnitude. Unexplained and
+possibly a symptom: the oracle's maximum plume height is **9,437 m**, which is
+not a physical plume from a power-plant stack.
+
+One hypothesis is already refuted arithmetically. If InMAP had failed to bind
+the stack columns at all — the blog writes its emissions through a shapefile
+with lowercase `height`/`diam`/`temp`/`velocity` against `EmisRecord`'s
+`Height`/`Diam`/`Temp`/`Velocity` — every source would be ground level and it
+would report `7524.92`. It reports `6928.96`. InMAP is doing plume rise.
+
+> **An earlier full-scale total published here (`6983.9385617781645`, +0.79%)
+> was VOID** and its apparent agreement was a coincidence. It came from an
+> engine that contracted three of the five pathways against the wrong SR
+> emission layer: three sibling SR loaders each expose `SOA`, `pNO3`, …, and
+> the Julia and Python gated-fetch hook published every fetched slab under an
+> alias resolved by matching the *tail* of a dotted name, so all three
+> providers claimed all three keys and the last writer in hash order won. Rust
+> registers one key per provider and was right all along; the disagreement
 > between the two bindings is what exposed it. Fixed in EarthSciAST `98e6f1b6`.
-> At `ISRM_FIRSTN=200` the fixed engine gives Julia `47.78003339619337` against
-> Rust `47.780033396193765`, both matching an independent numpy oracle.
+>
+> Worth keeping, because it is the argument for the whole apparatus: the
+> per-record plume-layer digest matched the oracle **exactly in both bindings
+> while the totals were wrong**. The physics was right and the contraction was
+> not. A contract checking only the layer assignment would have passed this.
 >
 > `RTOL_ORACLE` in [`contract/compare_results.py`](contract/compare_results.py)
-> was fitted to the void number and must be re-derived from the corrected run.
-
-Worth keeping, because it is the argument for the whole apparatus: the
-per-record plume-layer digest matched the oracle **exactly in both bindings
-while the totals were wrong**. The physics was right and the contraction was
-not. A contract that checked only the layer assignment would have passed this.
-
-**The residual is attributed but not proven.** The deliberate deviation below
-is the expected cause, its sign is right, and the argument for why 0.43% of
-misplaced mass buys ~0.8% of deaths is written out in that file — but nothing
-here *measures* the split between that cause and any other. Two candidates are
-untested: the hosted ISRM matrix may have changed since the 2019 tutorial, and
-the tutorial's own path writes its emissions through a shapefile, whose DBF
-numeric fields could truncate the stack parameters that plume rise reads. The
-decisive test is to implement the bug-compatible variant and see whether it
-lands on `6928.959583` exactly; that was considered and deliberately declined,
-because reproducing a defect is a worse artifact than documenting one. Until
-someone runs it, read the +0.79% as *consistent with* the explanation below
-rather than as evidence for it.
+> is still the value fitted to that void number and is meaningless until the
+> gap above is explained. Do not read it as a bound anyone has justified.
 
 Two numbers came back **unchanged** from the ground-level-only era, which is
 the check that says plume rise moved what it was supposed to and nothing else:
@@ -415,8 +438,12 @@ shims, only Julia has been driven end to end since plume rise landed.
   store. `(m/s)^-1/3` was a DOCUMENT bug and not a registry gap: §4.8.2 reads it
   as `((m/s)^-1)/3`, a scaling factor, and the bindings gave it three different
   meanings; it now reads `(m/s)^(-1/3)`, and a numeric scaling factor is a hard
-  error in every binding. None of this moved a number — Julia's
-  `ISRM_FIRSTN=200` totals are bit-identical before and after.
+  error in every binding. **None of this moved a number.** Measured, not
+  assumed: on the engine of the moment, Julia's `ISRM_FIRSTN=200` totals were
+  bit-identical with the old unit strings and the new ones
+  (`sum(deathsK) = 50.92431255236616` both times, on the engine that then still
+  carried the sibling-slab aliasing bug). A declared unit feeds validation, not
+  the arithmetic; the totals moved later, and for an unrelated reason.
 
 ## Timing
 
