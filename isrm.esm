@@ -55,7 +55,7 @@
     "G6": "CLOSED (esm-spec 8.9.4). N_REC is still runtime-discovered (default 0), but the LOADER discovers it: EGU_Emis declares `extent: {metaparameter: N_REC}`, so prepare() samples it before it closes metaparameters and the surviving record count sizes emis_records. No caller counts rows. PUSHDOWN DRAFT: N_PPL is GONE \u2014 emis_src_cells is a derived index set whose extent is materialised from the emis_src_cells_faq producer (value-invention).",
     "G8": "`unit_conversion` on a data-loader variable (esm-spec 8.2) is PARSED and VALIDATED by all three bindings and APPLIED by none of them: `providers_from_document` delivers the raw column, and nothing between the provider seam and the model touches it. Measured on the first 200 EGU records: max stkhgt 707.0 (feet, not the declared metres), max stktemp 1116.0 (degrees Fahrenheit, not kelvin). While the four stack columns were carried for fidelity and consumed by nothing, that was invisible; the moment plume rise reads them it is the difference between a stack in model layer 2 and one in model layer 4. So these four variables declare the unit their column actually arrives in, carry no `unit_conversion`, and the conversion is stated as the model observeds stk_height/stk_diam/stk_temp/stk_vel. A binding that starts applying `unit_conversion` will therefore not double-convert.",
     "G9": "A blank FF10 numeric field is delivered as NaN. `record_filter` cannot express \"blank means zero\" - `require_finite` only DROPS the record, and a stack with no recorded exit velocity is still a real emission record that InMAP reads with Go's zero value. So the stk_* observeds guard each column with `ifelse(x == x, ., 0)`, which is false only for NaN. Unguarded, one NaN propagates through the whole ASME branch tree and silently lands that record in SR layer 0.",
-    "G7": "expression_templates (esm-spec 9.6) cannot carry a body used inside the projection-pushdown pattern, so the two repeated bodies here - the meteorology gather and the layered emission binning - are written out at each of their 7 and 15 sites rather than declared once. TWO independent reasons, both measured on this document. (a) Under reference-preserving round-trip the call site is still an `apply_expression_template` node when `desugar_pushdown` runs, so `_pd_find_ifelse_cond` finds no containment ifelse in an E_* body, the binning is not recognised, and the rewrite SILENTLY does not fire at all - no derived support set, no gate, and the whole SR matrix in the fetch plan. (b) A registry body may not reference a name a coupling `variable_map` rewrites, which src_W/src_S/src_E/src_N and emis_annual all are (`template_body_references_coupling_rewritten_variable`); threading them through `params` would put a six-binding preamble on every call site and cost more clarity than the repetition does."
+    "G7": "The two repeated bodies here \u2014 the meteorology gather and the layered emission binning \u2014 are written out at each of their 7 and 15 sites rather than declared once as expression_templates (esm-spec 9.6). This is now a TIDINESS debt, not a format limit. It was a format limit: under reference-preserving round-trip the call site was still an `apply_expression_template` node when `desugar_pushdown` ran, so `_pd_find_ifelse_cond` found no containment ifelse in an E_* body, the binning went unrecognised, and the rewrite SILENTLY did not fire \u2014 no derived support set, no gate, and the whole SR matrix in the fetch plan. EarthSciAST feat/pushdown-sees-template-refs fixed that: the detector now decides on Expand(tree) while the rewrite still edits the call site, so a factored body is recognised exactly as its expansion would be. The second obstacle, that a registry body may not reference a name a coupling `variable_map` rewrites (`template_body_references_coupling_rewritten_variable`, which src_W/src_S/src_E/src_N and emis_annual all are), has a sanctioned answer that guard's own message gives: bind the value through the template params. Folding these sites into two templates is a document change nobody has made yet."
    },
    "grid_mapping": {
     "grid_mapping_name": "lambert_conformal_conic",
@@ -394,7 +394,7 @@
     },
     "WindSpeedMinusThird": {
      "file_variable": "WindSpeedMinusThird",
-     "units": "(m/s)^-1/3",
+     "units": "(m/s)^(-1/3)",
      "description": "Cell mean of u^(-1/3). Length 596444 (N_ALL), layer-major over all 27 model layers; read in full because plume rise gathers it at whichever layer a stack top sits in."
     },
     "WindSpeedMinusOnePointFour": {
@@ -1048,8 +1048,8 @@
     },
     "annual": {
      "file_variable": "ANN_VALUE",
-     "units": "kg/yr",
-     "description": "Annual emissions (col 13)."
+     "units": "short_ton/yr",
+     "description": "Annual emissions (col 13), in SHORT TONS per year as the column stores it."
     },
     "stkhgt": {
      "file_variable": "STKHGT",
@@ -1262,12 +1262,12 @@
     },
     "emis_annual": {
      "type": "parameter",
-     "units": "kg/yr",
+     "units": "short_ton/yr",
      "default": 0.0,
      "shape": [
       "emis_records"
      ],
-     "description": "Per-record annual emissions (tons/yr); from EGU_Emis.annual."
+     "description": "Per-record annual emissions in SHORT TONS per year, as the FF10 ANN_VALUE column stores them; from EGU_Emis.annual. `fact` is the short-ton/yr -> ug/s conversion applied once to the summed concentration."
     },
     "pollutant": {
      "type": "parameter",
@@ -1397,7 +1397,7 @@
     },
     "WindSpeedMinusThird": {
      "type": "parameter",
-     "units": "(m/s)^-1/3",
+     "units": "(m/s)^(-1/3)",
      "default": 0.0,
      "shape": [
       "all_cells"
@@ -1444,7 +1444,7 @@
      "type": "parameter",
      "units": "1",
      "default": 28766.639396245562,
-     "description": "tons/year emission-unit -> ug/m3 scaling (applied once to the summed concentration). Exactly InMAP's emisConversionFactor, 907184740000 / (3600*8760) \u2014 8760 h/yr, not 365.25 d."
+     "description": "short_ton/year emission-unit -> ug/m3 scaling (applied once to the summed concentration). Exactly InMAP's emisConversionFactor, 907184740000 / (3600*8760) \u2014 8760 h/yr, not 365.25 d."
     },
     "pop_scale": {
      "type": "parameter",
@@ -4479,7 +4479,7 @@
        ]
       }
      },
-     "description": "Model layer the STACK TOP sits in, for the source cell that contains the record: InMAP's findLayer (sort.SearchFloat64s on the staggered LayerHeight column, minus one unless zero), which with LayerHeight[0]=0 is exactly the count of layer bottoms strictly below the stack. FOUR indicators is enough and is asserted by the inventory: the tallest EGU stack is 316.38 m and the lowest layer-4 bottom is 348.44 m, so the stack layer is always in {0,1,2,3}; four terms would still cover the tallest chimney on Earth (~419.7 m, against a lowest layer-5 bottom of 503.89 m). The leading containment indicator is the same spatial join E_* uses, so this picks the record's own cell and is 0 for a record outside the grid. IN-BOUNDS ARGUMENT, load-bearing: a sum of four indicators is at most 4, so the largest LayerHeight offset any of these observeds reaches is 4*52411 + 52410 = 262054 < 596444 = N_ALL. No clamp is needed, and none should be added on the assumption that one is missing \u2014 but do not widen the sum without redoing this arithmetic, because an out-of-range const-array gather is a hard error in Julia and Python and SILENTLY 0.0 in Rust."
+     "description": "Model layer the STACK TOP sits in, for the source cell that contains the record: InMAP's findLayer (sort.SearchFloat64s on the staggered LayerHeight column, minus one unless zero), which with LayerHeight[0]=0 is exactly the count of layer bottoms strictly below the stack. FOUR indicators is enough and is asserted by the inventory: the tallest EGU stack is 316.38 m and the lowest layer-4 bottom is 348.44 m, so the stack layer is always in {0,1,2,3}; four terms would still cover the tallest chimney on Earth (~419.7 m, against a lowest layer-5 bottom of 503.89 m). The leading containment indicator is the same spatial join E_* uses, so this picks the record's own cell and is 0 for a record outside the grid. IN-BOUNDS ARGUMENT, load-bearing: a sum of four indicators is at most 4, so the largest LayerHeight offset any of these observeds reaches is 4*52411 + 52410 = 262054 < 596444 = N_ALL. No clamp is needed, and none should be added on the assumption that one is missing \u2014 but do not widen the sum without redoing this arithmetic, because an out-of-range const-array gather is a hard error in all three bindings (Rust returned a silent 0.0 until EarthSciAST 5af33a14 made it raise E_TREEWALK_CONSTARRAY_OOB like the others)."
     },
     "air_temp": {
      "type": "observed",
@@ -4936,7 +4936,7 @@
     },
     "wind_m13": {
      "type": "observed",
-     "units": "(m/s)^-1/3",
+     "units": "(m/s)^(-1/3)",
      "shape": [
       "emis_records"
      ],
@@ -6369,7 +6369,7 @@
     },
     "E_VOC_L0": {
      "type": "observed",
-     "units": "ton/yr",
+     "units": "short_ton/yr",
      "shape": [
       "src_cells"
      ],
@@ -6535,7 +6535,7 @@
     },
     "E_VOC_L1": {
      "type": "observed",
-     "units": "ton/yr",
+     "units": "short_ton/yr",
      "shape": [
       "src_cells"
      ],
@@ -6701,7 +6701,7 @@
     },
     "E_VOC_L2": {
      "type": "observed",
-     "units": "ton/yr",
+     "units": "short_ton/yr",
      "shape": [
       "src_cells"
      ],
@@ -6867,7 +6867,7 @@
     },
     "E_NOx_L0": {
      "type": "observed",
-     "units": "ton/yr",
+     "units": "short_ton/yr",
      "shape": [
       "src_cells"
      ],
@@ -7033,7 +7033,7 @@
     },
     "E_NOx_L1": {
      "type": "observed",
-     "units": "ton/yr",
+     "units": "short_ton/yr",
      "shape": [
       "src_cells"
      ],
@@ -7199,7 +7199,7 @@
     },
     "E_NOx_L2": {
      "type": "observed",
-     "units": "ton/yr",
+     "units": "short_ton/yr",
      "shape": [
       "src_cells"
      ],
@@ -7365,7 +7365,7 @@
     },
     "E_NH3_L0": {
      "type": "observed",
-     "units": "ton/yr",
+     "units": "short_ton/yr",
      "shape": [
       "src_cells"
      ],
@@ -7531,7 +7531,7 @@
     },
     "E_NH3_L1": {
      "type": "observed",
-     "units": "ton/yr",
+     "units": "short_ton/yr",
      "shape": [
       "src_cells"
      ],
@@ -7697,7 +7697,7 @@
     },
     "E_NH3_L2": {
      "type": "observed",
-     "units": "ton/yr",
+     "units": "short_ton/yr",
      "shape": [
       "src_cells"
      ],
@@ -7863,7 +7863,7 @@
     },
     "E_SOx_L0": {
      "type": "observed",
-     "units": "ton/yr",
+     "units": "short_ton/yr",
      "shape": [
       "src_cells"
      ],
@@ -8029,7 +8029,7 @@
     },
     "E_SOx_L1": {
      "type": "observed",
-     "units": "ton/yr",
+     "units": "short_ton/yr",
      "shape": [
       "src_cells"
      ],
@@ -8195,7 +8195,7 @@
     },
     "E_SOx_L2": {
      "type": "observed",
-     "units": "ton/yr",
+     "units": "short_ton/yr",
      "shape": [
       "src_cells"
      ],
@@ -8361,7 +8361,7 @@
     },
     "E_PM25_L0": {
      "type": "observed",
-     "units": "ton/yr",
+     "units": "short_ton/yr",
      "shape": [
       "src_cells"
      ],
@@ -8527,7 +8527,7 @@
     },
     "E_PM25_L1": {
      "type": "observed",
-     "units": "ton/yr",
+     "units": "short_ton/yr",
      "shape": [
       "src_cells"
      ],
@@ -8693,7 +8693,7 @@
     },
     "E_PM25_L2": {
      "type": "observed",
-     "units": "ton/yr",
+     "units": "short_ton/yr",
      "shape": [
       "src_cells"
      ],
