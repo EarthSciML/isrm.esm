@@ -10475,7 +10475,7 @@
     }
    },
    "equations": [],
-   "examples": [
+   "analyses": [
     {
      "id": "isrm_demo",
      "description": "Static evaluation of the ISRM tutorial: TotalPM25 and attributable deaths at the 52411 receptor cells. Degenerate time span (no ODE integration).",
