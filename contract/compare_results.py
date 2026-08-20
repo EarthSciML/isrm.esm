@@ -43,41 +43,42 @@ import sys
 RTOL_FIELD = 1e-12       # cross-binding, per-field scalars (sum/min/max/sample)
 
 # The InMAP source-receptor tutorial's published national totals
-# (https://inmap.run/blog/2019/04/20/sr/). They are a FULL-SCALE result and are
-# only asserted on records whose grid matches the full problem (see
-# check_oracle). They ACCOUNT FOR PLUME RISE — the pre-plume-rise figures
-# (7524.918845602511 / 16979.632171487083) belong to the ground-level-only
-# records archived in contract/records/ground-level-only/.
+# (https://inmap.run/blog/2019/04/20/sr/).
+#
+# THESE ARE NOT ASSERTED, because they are not reachable. Measured full scale
+# on isrm_v1.2.1.zarr by contracting every possible layer assignment directly
+# off the zarr (see README, "The published totals are not reachable by any
+# layer assignment"):
+#
+#     every record -> SR layer 0        deathsK 7524.918950
+#     every record -> SR layer 1                7145.784995
+#     every record -> SR layer 2                5803.346207
+#     every record at its stack's layer         6674.494133   (deltaH == 0)
+#     ceiling over all admissible assignments   6697.553122
+#     published                                 6928.959583   <- 3.46% ABOVE the ceiling
+#
+# InMAP's plume rise is non-negative in every branch of calcDeltaHPrecomputed
+# and findLayer is monotone in height, so every record lands at a layer at or
+# ABOVE its own stack's layer. That bounds deathsK at 6697.55. Reaching the
+# published figure would mean emitting BELOW the layer the stack sits in, which
+# InMAP's code cannot do; deathsL is 3.5% above its own ceiling independently.
+# So at least ~3.5% of the difference is a MAGNITUDE discrepancy, not a vertical
+# one, and no plume-rise assignment can be blamed for it.
+#
+# Kept as context, printed and never checked. An earlier version of this file
+# asserted them with a tolerance fitted to a run that turned out to be wrong,
+# which made a fitted number look like a bound.
 ORACLE_DEATHS_K = 6928.959583
 ORACLE_DEATHS_L = 15623.924632
 
-# MEASURED, not chosen. The document deliberately does not reproduce InMAP's
-# above-layer-7 source-index defect (contract/README.md, "One deliberate
-# deviation from InMAP"): a plume that rises above the top of model layer 7
-# keeps an index built in the coarse 9324-cell high-altitude grid, which
-# `sr.Reader.source` then reads against the 52411-cell ground grid, so InMAP
-# charges those emissions to the WRONG source cell. That is 654 of 43650
-# records and 0.43% of emitted mass; this document charges them to the cell the
-# emission actually came from. So a correct run lands NEAR the published totals,
-# never on them, and the tolerance has to be wide enough for that one difference
-# and no wider.
-#
-# MEASURED on the full-scale Julia run of 2026-08-19 (43650 records, 1520
-# emission-bearing cells, isrm_v1.2.1.zarr): sum(deathsK) = 6983.9385617781645
-# against the published 6928.959583, and sum(deathsL) = 15752.315804140908
-# against 15623.924632 — relative differences of 7.87e-3 and 8.15e-3 as
-# rel_diff() computes them. RTOL_ORACLE is set just above the larger.
-#
-# Worth noting rather than glossing: 8.15e-3 is nearly TWICE the 0.43% of
-# emitted mass the misplaced group carries. That is not a contradiction. The
-# mass is not lost in either model, it is placed differently, and where it
-# lands is what decides how many deaths it causes: put back on the cells the
-# emissions actually came from — power plants, which sit near people — a ton
-# buys more deaths than it does scattered across the ground grid by a coarse
-# index read as a fine one. So the group punches roughly twice its weight, in
-# the direction that makes this document's total HIGHER than the blog's, which
-# is the direction the argument predicts.
-RTOL_ORACLE = 8.3e-3
+# What IS asserted: the run must sit inside the span its own algorithm can
+# produce. The lower edge is every record in the top SR layer, the upper edge
+# is the per-record optimum subject to layer >= stack layer. A run outside this
+# is not a disagreement with a published number, it is a broken layer
+# assignment — which is a check with teeth, unlike the one it replaces.
+ADMISSIBLE_DEATHS_K = (5803.346207, 6697.553122)
+ADMISSIBLE_DEATHS_L = (13080.649455, 15100.721913)
+RTOL_ADMISSIBLE = 1e-6   # the edges are measured, not derived in closed form
 
 FULL_N_SRC = 52411
 FULL_N_REC = 43650
@@ -306,14 +307,24 @@ def check_oracle(name: str, doc: dict, rep: Report) -> None:
         print(f"  reduced record (n_src={grid.get('n_src')}, n_rec={grid.get('n_rec')}); "
               f"the tutorial totals only apply at n_src={FULL_N_SRC}, n_rec={FULL_N_REC}")
         return
-    print(f"\n--- {name} vs tutorial oracle ---")
-    for label, key, target in (("krewski", "krewski", ORACLE_DEATHS_K),
-                               ("lepeule", "lepeule", ORACLE_DEATHS_L)):
+    print(f"\n--- {name} vs the tutorial's published totals ---")
+    for label, key, target, lo_hi in (
+            ("krewski", "krewski", ORACLE_DEATHS_K, ADMISSIBLE_DEATHS_K),
+            ("lepeule", "lepeule", ORACLE_DEATHS_L, ADMISSIBLE_DEATHS_L)):
         got = doc["deaths"][key]["sum"]
-        d = rel_diff(got, target)
-        rep.check(d <= RTOL_ORACLE, f"{name} deaths.{label} vs oracle",
-                  f"{got!r} vs {target!r}, rel diff {d:.3e}")
-        print(f"  sum(deaths {label:<8}) = {got:.6f}   target {target:.6f}   rel {d:.2e}")
+        lo, hi = lo_hi
+        # Context only. The published pair is above the ceiling this algorithm
+        # can reach, so a deviation here is expected and is not a failure.
+        print(f"  sum(deaths {label:<8}) = {got:.6f}   published {target:.6f}"
+              f"   rel {rel_diff(got, target):.2e}  (context, not checked)")
+        # The real check: inside the span the algorithm can produce.
+        ok = lo * (1 - RTOL_ADMISSIBLE) <= got <= hi * (1 + RTOL_ADMISSIBLE)
+        rep.check(ok, f"{name} deaths.{label} within the admissible layer span",
+                  f"{got!r} outside [{lo!r}, {hi!r}] — every record must land at or "
+                  f"above its own stack's layer, so a total outside this span means "
+                  f"the layer assignment is wrong, not that the model disagrees "
+                  f"with a published number")
+        print(f"    admissible span [{lo:.3f}, {hi:.3f}] — {'inside' if ok else 'OUTSIDE'}")
 
 
 def check_plume_oracle(docs: dict, oracles: list, rep: Report) -> None:
