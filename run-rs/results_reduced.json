@@ -152,10 +152,10 @@
     }
   },
   "timing": {
-    "peak_rss_bytes": 652136448.0,
-    "prepare_seconds": 20.06185148,
-    "providers_seconds": 0.001896755,
-    "wall_seconds": 20.069963278
+    "peak_rss_bytes": 645451776.0,
+    "prepare_seconds": 39.250751235,
+    "providers_seconds": 0.018719,
+    "wall_seconds": 39.276799357
   },
   "plume": {
     "sr_lower": {

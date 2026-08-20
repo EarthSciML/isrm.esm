@@ -43,15 +43,28 @@ model layer falls between entries — model layers 1–2 between SR 0 and 1, lay
 only this array moved `sum(deathsK)` from `6063.777261` to `6936.106343`. The
 SOx mass split went from 0.5 / 4.3 / 95.2 % to 12.7 / 51.2 / 36.1 %.
 
+A fourth defect in the same store, found while drafting the repair:
+**every array declares `fill_value: 0`**, which xarray promotes to a CF
+`_FillValue` — so every genuine zero in the matrix reads back as NaN. It is
+latent only because the missing `.zattrs` currently stop xarray opening the
+store at all; measured once that is fixed,
+`ds['SOA'][0,0:100,:].values.sum()` is `nan`. Repairing the attributes without
+also clearing `fill_value` would turn a store nothing can open into one that
+opens and silently returns NaN, which is worse.
+
 The same conversion pass also **lost the per-cell `Layer` variable** (a
 case-insensitive collision with the 3-element `layer` dimension coordinate) and
 **stripped `.zattrs` from the SR arrays**, which is why this repo has always
 needed `seed_empty_zattrs` — a workaround that was evidence of a lossy
 conversion sitting in plain sight for years.
 
-The matrix *data* is fine: Zenodo's zip is md5-identical across both 2019
-depositions and its rows are byte-identical to the zarr's. One index array was
-replaced; nothing was rescaled.
+The matrix *data* appears fine: Zenodo's zip is md5-identical across both 2019
+depositions, and sampled SR rows streamed from it are byte-identical to the
+zarr's. That sampling is weaker than first reported — the extraction tool used
+had an off-by-one in its buffer accounting (`buf_start += cut` advancing further
+than `del buf[:cut]` removed whenever targets were far apart), so three of the
+eight rows originally compared were garbage produced by the tool rather than by
+the store. Five rows stand. One index array was replaced; nothing was rescaled.
 
 **Why it went unnoticed:** the conversion had no round-trip verification. And
 `[0,1,2]` is exactly what a plausible arange looks like, so nothing about it
