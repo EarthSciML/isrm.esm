@@ -19,9 +19,11 @@ Why these tolerances
 set, which CONFORMANCE_SPEC §5.5 requires to be byte-identical across bindings
 regardless of candidate-generation backend. So it is compared EXACTLY — any
 difference is a real disagreement, never float noise. The ``plume`` block's
-layer assignments are integer-valued for the same reason and are compared the
-same way: a float tolerance there would hide a real disagreement about which
-layer a record emits into.
+integer parts — ``sr_lower`` and ``stack_layer`` — are compared the same way,
+because a float tolerance there would hide a real disagreement about which
+layers a record emits into. Its ``weights`` are genuinely floats
+(``sr.Reader.layerFracs`` interpolates a plume between two SR layers) and get
+the float treatment.
 
 Float fields are NOT compared exactly. Three engines contract a 1520x52411 sum
 in different orders, and reassociating a float sum changes the last bits; the
@@ -41,44 +43,50 @@ import sys
 # Tolerances
 # ---------------------------------------------------------------------------
 RTOL_FIELD = 1e-12       # cross-binding, per-field scalars (sum/min/max/sample)
+ATOL_WEIGHT_SUM = 1e-12  # |w_sr0 + w_sr1 + w_sr2 - 1|, an exact invariant
 
 # The InMAP source-receptor tutorial's published national totals
 # (https://inmap.run/blog/2019/04/20/sr/).
 #
-# THESE ARE NOT ASSERTED, because they are not reachable. Measured full scale
-# on isrm_v1.2.1.zarr by contracting every possible layer assignment directly
-# off the zarr (see README, "The published totals are not reachable by any
-# layer assignment"):
+# PRINTED, NOT ASSERTED — but for a different reason than before, and the
+# history matters because two successive versions of this file got it wrong in
+# opposite directions.
 #
-#     every record -> SR layer 0        deathsK 7524.918950
-#     every record -> SR layer 1                7145.784995
-#     every record -> SR layer 2                5803.346207
-#     every record at its stack's layer         6674.494133   (deltaH == 0)
-#     ceiling over all admissible assignments   6697.553122
-#     published                                 6928.959583   <- 3.46% ABOVE the ceiling
+#   * An earlier version asserted them with a tolerance fitted to a run that
+#     later turned out to be wrong, which made a fitted number look like a bound.
+#   * The version that replaced it asserted an "admissible span" instead, whose
+#     upper edge was a ceiling derived from `sr.layers == [0, 1, 2]` — the
+#     corrupt array in the zarr. Given a wrong `layers`, non-negative plume rise
+#     really does bound deathsK at 6697.55 and the published 6928.96 really is
+#     above it. The argument was valid and the premise was false; with
+#     `layers == [0, 3, 6]` the published totals are reachable, and the
+#     reduced-scale runs below now reproduce the live service exactly. The span
+#     is REMOVED rather than re-derived: it never described the model, it
+#     described a corrupt input, and re-deriving it would mean re-measuring four
+#     full-scale contractions to assert a bound that the direct comparison with
+#     the service makes redundant.
 #
-# InMAP's plume rise is non-negative in every branch of calcDeltaHPrecomputed
-# and findLayer is monotone in height, so every record lands at a layer at or
-# ABOVE its own stack's layer. That bounds deathsK at 6697.55. Reaching the
-# published figure would mean emitting BELOW the layer the stack sits in, which
-# InMAP's code cannot do; deathsL is 3.5% above its own ceiling independently.
-# So at least ~3.5% of the difference is a MAGNITUDE discrepancy, not a vertical
-# one, and no plume-rise assignment can be blamed for it.
-#
-# Kept as context, printed and never checked. An earlier version of this file
-# asserted them with a tolerance fitted to a run that turned out to be wrong,
-# which made a fitted number look like a bound.
+# What SHOULD replace it at full scale is a tolerance against these two numbers,
+# measured from a full-scale run of the layerFracs document. That run has not
+# been made yet, so nothing full-scale is asserted here today; the reduced-scale
+# service targets below are.
 ORACLE_DEATHS_K = 6928.959583
 ORACLE_DEATHS_L = 15623.924632
 
-# What IS asserted: the run must sit inside the span its own algorithm can
-# produce. The lower edge is every record in the top SR layer, the upper edge
-# is the per-record optimum subject to layer >= stack layer. A run outside this
-# is not a disagreement with a published number, it is a broken layer
-# assignment — which is a check with teeth, unlike the one it replaces.
-ADMISSIBLE_DEATHS_K = (5803.346207, 6697.553122)
-ADMISSIBLE_DEATHS_L = (13080.649455, 15100.721913)
-RTOL_ADMISSIBLE = 1e-6   # the edges are measured, not derived in closed form
+# Reduced-scale targets from the LIVE `inmap cloud` service, run on the same
+# truncated record list this repo's ISRM_FIRSTN uses. Keyed by n_rec.
+#
+# These are the strongest check in the file: they are not this document's own
+# output, not a published summary, and not fitted to anything — they are what
+# InMAP itself returns for the same input.
+SERVICE_DEATHS = {
+    200: (49.091470, 110.406968),
+}
+# The service reports six decimals, so each figure is known to +-5e-7 absolute,
+# which is +-1.0e-8 relative at 49 and +-4.5e-9 at 110. RTOL_SERVICE is an order
+# of magnitude above that and is NOT fitted to the observed agreement (which is
+# 9e-9 on deathsK and 2.9e-9 on deathsL, i.e. inside the printing precision).
+RTOL_SERVICE = 1e-7
 
 FULL_N_SRC = 52411
 FULL_N_REC = 43650
@@ -224,16 +232,18 @@ def plume_from_oracle(doc: dict) -> dict:
     without the SR matrix and without EarthSciAST — so it is the one target that
     can say the document's plume rise is RIGHT rather than merely consistent
     across three bindings. It carries more than the results record does
-    (`plume_model_layer`, `branch_usage`, the above-layer-7 group); this keeps
-    the fields the two have in common, keyed the results record's way. The
+    (`plume_model_layer`, `branch_usage`, the above-layer-7 group, and which
+    `layers` the store served); this keeps the fields the two have in common,
+    keyed the results record's way. The
     oracle's pathways are keyed by inventory name (VOC, NOx, …) and carry the SR
     array name the document uses, which is what `pathways` is keyed by.
     """
-    sr, st = doc["sr_layer"], doc["stack_layer"]
+    sr, st = doc["sr_lower"], doc["stack_layer"]
     out = {
-        "sr_layer": {"count": doc["n_rec"], "histogram": sr["histogram"],
+        "sr_lower": {"count": doc["n_rec"], "histogram": sr["histogram"],
                      "sha256": sr["sha256"]},
         "stack_layer": {"count": doc["n_rec"], "sha256": st["sha256"]},
+        "weights": {k: v for k, v in doc["weights"].items() if k != "note"},
         "pathways": {p["sr_name"]: {"by_sr_layer": p["by_sr_layer"]}
                      for p in doc["pathways"].values()},
     }
@@ -246,20 +256,27 @@ def plume_from_oracle(doc: dict) -> dict:
 
 
 def compare_plume(tag: str, a: dict, b: dict, rep: Report) -> None:
-    """The `plume` block, compared the way `ppl` is: EXACTLY.
+    """The `plume` block: the integer parts EXACTLY, the float parts at RTOL_FIELD.
 
-    `sr_layer` is the SR emission layer each record is charged to — the one
-    intermediate plume rise exists to produce, and the thing every downstream
-    number follows from. It is integer-valued, so a float tolerance here would
-    paper over a real disagreement about WHICH LAYER a record emits into.
-    `stack_layer` is compared for localization: a wrong stack layer means the
-    meteorology gather is wrong, a right stack layer with a wrong SR layer means
-    the ASME expression is.
+    `sr_lower` is the lower of the (at most two) SR emission layers each record
+    is charged to. It is integer-valued, so a float tolerance would paper over a
+    real disagreement about WHICH LAYERS a record emits into. `stack_layer` is
+    compared for localization: a wrong stack layer means the meteorology gather
+    is wrong, a right stack layer with a wrong SR assignment means the ASME
+    expression or the layerFracs interpolation is.
+
+    The `weights` are floats — sr.Reader.layerFracs interpolates a plume sitting
+    between two SR layers — and descend from `plume_height`, whose cube roots
+    differ by an ulp between languages, so they get the FieldSummary treatment
+    every other float field gets rather than an exact digest. `max_sum_error`
+    is different in kind: layerFracs conserves mass exactly, so each record's
+    three weights sum to exactly 1 and this is checked against an ABSOLUTE
+    bound in every record independently, not compared between records.
 
     The per-layer emission masses are floats and get RTOL_FIELD, like every
     other float — they are the same sum in a different order.
     """
-    for key in ("sr_layer", "stack_layer"):
+    for key in ("sr_lower", "stack_layer"):
         if key not in a or key not in b:
             continue
         x, y = a[key], b[key]
@@ -274,6 +291,53 @@ def compare_plume(tag: str, a: dict, b: dict, rep: Report) -> None:
             rep.check(hx == hy, f"{tag} plume.{key}.histogram", f"{hx} != {hy}")
             print(f"  plume {key:<11} {hx}  sha256 "
                   f"{'MATCH' if x['sha256'] == y['sha256'] else 'DIFFER'}")
+
+    if "weights" in a and "weights" in b:
+        wa, wb = a["weights"], b["weights"]
+        for label, w in ((tag.split(" vs ")[0], wa), (tag.split(" vs ")[-1], wb)):
+            e = w.get("max_sum_error")
+            if e is not None:
+                rep.check(e <= ATOL_WEIGHT_SUM,
+                          f"{label} plume.weights.max_sum_error",
+                          f"max |w_sr0+w_sr1+w_sr2 - 1| = {e:.3e} > "
+                          f"{ATOL_WEIGHT_SUM:.0e} — layerFracs conserves mass, "
+                          f"so this is a broken document, not float noise")
+        if "count" in wa and "count" in wb:
+            rep.check(wa["count"] == wb["count"], f"{tag} plume.weights.count",
+                      f"{wa['count']} != {wb['count']}")
+        for wk in ("w_sr0", "w_sr1", "w_sr2"):
+            if wk not in wa or wk not in wb:
+                rep.check(False, f"{tag} plume.weights.{wk}",
+                          "present in only one record")
+                continue
+            sa, sb = wa[wk], wb[wk]
+            worst = 0.0
+            for scalar in ("sum", "min", "max"):
+                if scalar in sa and scalar in sb:
+                    dd = rel_diff(sa[scalar], sb[scalar])
+                    worst = max(worst, dd)
+                    rep.check(dd <= RTOL_FIELD,
+                              f"{tag} plume.weights.{wk}.{scalar}",
+                              f"rel diff {dd:.3e} > {RTOL_FIELD:.0e}")
+            if len(sa.get("sample", [])) == len(sb.get("sample", [])):
+                for i, (x, y) in enumerate(zip(sa["sample"], sb["sample"])):
+                    dd = rel_diff(x, y)
+                    worst = max(worst, dd)
+                    rep.check(dd <= RTOL_FIELD,
+                              f"{tag} plume.weights.{wk}.sample[{i}]",
+                              f"rel diff {dd:.3e} > {RTOL_FIELD:.0e}")
+            else:
+                rep.check(False, f"{tag} plume.weights.{wk}.sample",
+                          "differing sample lengths")
+            bitid = sa.get("sha256") and sa.get("sha256") == sb.get("sha256")
+            print(f"  plume weight {wk:<7} sum {sa['sum']:.6f}   "
+                  f"max rel diff {worst:.3e}"
+                  f"{'   (bit-identical)' if bitid else ''}")
+    elif "weights" in a or "weights" in b:
+        rep.check(False, f"{tag} plume.weights",
+                  "one record carries the layerFracs weights and the other does "
+                  "not — a single-layer assignment is not comparable to a split "
+                  "one")
 
     keys = sorted(set(a["pathways"]) | set(b["pathways"]))
     for k in keys:
@@ -302,29 +366,47 @@ def check_oracle(name: str, doc: dict, rep: Report) -> None:
     # against it reports a bogus ~99% error and buries the cross-binding
     # comparison that IS meaningful. Cross-binding checks still run on it.
     grid = doc.get("grid") or {}
-    if (grid.get("n_src"), grid.get("n_rec")) != (FULL_N_SRC, FULL_N_REC):
+    n_rec = grid.get("n_rec")
+    if (grid.get("n_src"), n_rec) != (FULL_N_SRC, FULL_N_REC):
+        if n_rec in SERVICE_DEATHS:
+            check_service(name, doc, SERVICE_DEATHS[n_rec], rep)
+            return
         print(f"\n--- {name} vs tutorial oracle: SKIPPED ---")
-        print(f"  reduced record (n_src={grid.get('n_src')}, n_rec={grid.get('n_rec')}); "
-              f"the tutorial totals only apply at n_src={FULL_N_SRC}, n_rec={FULL_N_REC}")
+        print(f"  reduced record (n_src={grid.get('n_src')}, n_rec={n_rec}); "
+              f"the tutorial totals only apply at n_src={FULL_N_SRC}, "
+              f"n_rec={FULL_N_REC}, and no live-service target is recorded for "
+              f"n_rec={n_rec} (see SERVICE_DEATHS)")
         return
     print(f"\n--- {name} vs the tutorial's published totals ---")
-    for label, key, target, lo_hi in (
-            ("krewski", "krewski", ORACLE_DEATHS_K, ADMISSIBLE_DEATHS_K),
-            ("lepeule", "lepeule", ORACLE_DEATHS_L, ADMISSIBLE_DEATHS_L)):
+    for label, key, target in (("krewski", "krewski", ORACLE_DEATHS_K),
+                               ("lepeule", "lepeule", ORACLE_DEATHS_L)):
         got = doc["deaths"][key]["sum"]
-        lo, hi = lo_hi
-        # Context only. The published pair is above the ceiling this algorithm
-        # can reach, so a deviation here is expected and is not a failure.
         print(f"  sum(deaths {label:<8}) = {got:.6f}   published {target:.6f}"
               f"   rel {rel_diff(got, target):.2e}  (context, not checked)")
-        # The real check: inside the span the algorithm can produce.
-        ok = lo * (1 - RTOL_ADMISSIBLE) <= got <= hi * (1 + RTOL_ADMISSIBLE)
-        rep.check(ok, f"{name} deaths.{label} within the admissible layer span",
-                  f"{got!r} outside [{lo!r}, {hi!r}] — every record must land at or "
-                  f"above its own stack's layer, so a total outside this span means "
-                  f"the layer assignment is wrong, not that the model disagrees "
-                  f"with a published number")
-        print(f"    admissible span [{lo:.3f}, {hi:.3f}] — {'inside' if ok else 'OUTSIDE'}")
+    print("  NOT CHECKED: no tolerance against these has been measured since the")
+    print("  document started following sr.Reader.layerFracs with layers=[0,3,6].")
+    print("  The reduced-scale live-service targets ARE checked — see SERVICE_DEATHS.")
+
+
+def check_service(name: str, doc: dict, target, rep: Report) -> None:
+    """A reduced record against what the LIVE `inmap cloud` service returned.
+
+    The published tutorial totals are a full-scale summary; this is InMAP itself,
+    on the same truncated record list, and it is the tightest statement the
+    contract can make about whether the document computes what InMAP computes.
+    """
+    n_rec = doc["grid"]["n_rec"]
+    print(f"\n--- {name} vs the live inmap cloud service (n_rec={n_rec}) ---")
+    for label, key, want in (("krewski", "krewski", target[0]),
+                             ("lepeule", "lepeule", target[1])):
+        got = doc["deaths"][key]["sum"]
+        d = rel_diff(got, want)
+        rep.check(d <= RTOL_SERVICE, f"{name} deaths.{label} vs inmap cloud",
+                  f"{got!r} vs {want!r}, rel diff {d:.3e} > {RTOL_SERVICE:.0e} — "
+                  f"the document no longer computes what InMAP computes on this "
+                  f"input")
+        print(f"  sum(deaths {label:<8}) = {got:.9f}   service {want:.6f}"
+              f"   rel {d:.2e}")
 
 
 def check_plume_oracle(docs: dict, oracles: list, rep: Report) -> None:
