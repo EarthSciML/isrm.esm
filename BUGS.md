@@ -496,27 +496,50 @@ descriptions now say why, where four used to say the opposite.
   how §4.2 and §4.3 each survived for months. Now that EarthSciIO publishes the
   names the bridge imports (0.1.2), a CI job could build the feature against the
   registry instead.
-* **The pushdown rewrite re-points only the gate ENVELOPE factors.** When it
-  compacts a binning aggregate's cell axis onto the derived support set, its
-  rect map is built from `tgt_env` alone (`pushdown_rewrite.py:1013-1017` and
-  the Julia/Rust peers). Any OTHER array the body indexes by the cell symbol is
-  left pointing at the full grid while the axis is now compact — full-grid
+* ~~**The pushdown rewrite re-points only the gate ENVELOPE factors.**~~
+  **FIXED 2026-08-21**, all three bindings. When the rewrite compacted a binning
+  aggregate's cell axis onto the derived support set, its rect map was built
+  from `tgt_env` alone. Any OTHER array the body indexed by the cell symbol was
+  left pointing at the full grid while the axis was now compact — full-grid
   values read at support positions, **wrong numbers with no diagnostic**;
-  `_pd_assert_rects_rebound` checks the envelope factors only. Nothing hits it
-  today because every binning body in `isrm_point.esm` reads exactly the four
-  rect factors. **`isrm_polygon.esm` hits it immediately**: its allocation
-  weight is `polygon_intersection_area(cell_ring[c], rec_ring[k])`, and
-  `cell_ring` is a rank-3 `[cells, verts, 2]` array that is not an envelope
-  factor. The fix is a rank-PRESERVING gather (`pd_cell__<C>__<F>` with shape
-  `[support, …trailing]`); the guard that should ship with it is a DECLINE, so
-  the §3.1 consequence — an ungated fetch — is at least visible.
+  `_pd_assert_rects_rebound` checked the envelope factors only. Nothing in
+  `isrm_point.esm` hit it, because every binning body there reads exactly the
+  four rect factors; `isrm_polygon.esm` hits it on its first line, since its
+  allocation weight is `polygon_intersection_area(cell_ring[c], rec_ring[k])`
+  and `cell_ring` is a rank-3 `[cells, verts, 2]` array that is not an envelope
+  factor. The gather family is now **every** array whose declared `shape[0]` is
+  the cell set and that the body subscripts with the cell symbol, and each
+  gather is **rank-preserving** — `pd_cell__<C>__<F>` is
+  `[pd_support__<C>, …F's trailing axes]`, defined by a map whose `output_idx`
+  names one generated symbol (`pd_t0`, `pd_t1`, …) per trailing axis. So the
+  sliced polygon-operand spelling `index(F, c)` survives the substitution of the
+  name unchanged, and `_pd_assert_rects_rebound` now covers the whole family.
+  A cell-axis array read at a COMPUTED position (`index(F, c + 1)`) is refused
+  with a hard error naming the array and the subscript — that one cannot be
+  re-pointed at all, and neither declining silently (an ungated fetch, §3.1) nor
+  emitting anyway (wrong numbers) is acceptable. Normative in CONFORMANCE_SPEC
+  §5.5.7 "Cell-axis arrays"; pinned by the `pushdown/polygon_area` golden and by
+  `pushdown_cell_geometry` tests in all three bindings, each comparing a gated
+  compact run against a dense one.
+* **Three Julia engine gaps sat behind it**, all found by making the fix
+  evaluate rather than merely emit, all fixed 2026-08-21. (1) `and`/`or`/`not`
+  lacked the `geo` registry flag, so a containment predicate — the canonical
+  `ifelse(and(cmp, cmp, …), …)`, which every pushdown fixture uses — could not
+  appear in a setup-time geometry body at all, though the runtime ladder these
+  lower to already had the arms. (2) Value-invention extents were merged into
+  `derived_extents` AFTER `_materialize_geometry_setup` ran, so a geometry body
+  ranging over a derived support set could not resolve its own extent. (3)
+  `_geo_index_extent` did not follow a `kind:"derived"` set through its
+  `from_faq`, which is how `derived_extents` is keyed. Rust needed none of these
+  — its dense evaluator computes the geometry inline.
 * **A nested `aggregate` is not a portable geometry operand.** Building the cell
-  ring inline inside the binning body would dodge the item above, and Python
-  evaluates it correctly (the inner aggregate does see the enclosing cell
-  symbol). Julia refuses: `E_TREEWALK_GEOMETRY_SETUP: operand must be a
-  build-time array (a const/setup array name, an index slice of one, or an
-  intersect_polygon clip)`. So the spelling that works in one binding is not the
-  spelling a document may use.
+  ring inline inside the binning body was one of the three escapes probed while
+  the item above was open; the rank-preserving gather makes it unnecessary, but
+  the divergence is real and still there. Python evaluates it correctly (the
+  inner aggregate does see the enclosing cell symbol). Julia refuses:
+  `E_TREEWALK_GEOMETRY_SETUP: operand must be a build-time array (a const/setup
+  array name, an index slice of one, or an intersect_polygon clip)`. So the
+  spelling that works in one binding is not the spelling a document may use.
 * **An indirect subscript on a geometry operand is wrong in two bindings.**
   `polygon_intersection_area(index(cell_ring, index(members, p)), …)` — the
   cheap alternative to a new gather — returns silently wrong values in Python
