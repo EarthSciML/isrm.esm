@@ -3,7 +3,7 @@
 //! this crate's own location (hence the isrm.esm checkout) plus environment
 //! overrides, so the shim is portable across machines.
 //!
-//!   ISRM_MODEL       the .esm to drive     (default: <repo>/isrm.esm)
+//!   ISRM_MODEL       the .esm to drive     (default: <repo>/isrm_point.esm)
 //!   ISRM_SCRATCH     bulk scratch root     (default: first writable of
 //!                    /scratch.local/$USER/isrm-esm, $SCRATCH/isrm-esm, tempdir)
 //!   EGU_ZIP          FF10 point-source zip (default: <repo>/data/
@@ -27,16 +27,17 @@ pub fn rs_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-/// The isrm.esm repository root.
+/// The isrm.esm repository root (the checkout, not the model file).
 pub fn repo() -> PathBuf {
     rs_dir().parent().map(Path::to_path_buf).unwrap_or_default()
 }
 
-/// The model this runner drives — the single clean `isrm.esm`.
+/// The model this runner drives — `isrm_point.esm`, which imports the shared
+/// templates from `isrm_base.esm`.
 pub fn model() -> PathBuf {
     match std::env::var("ISRM_MODEL") {
         Ok(p) => PathBuf::from(p),
-        Err(_) => repo().join("isrm.esm"),
+        Err(_) => repo().join("isrm_point.esm"),
     }
 }
 

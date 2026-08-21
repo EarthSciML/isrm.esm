@@ -1,5 +1,5 @@
 // =============================================================================
-// run-rs — the RUST binding drives the single clean `isrm.esm` end to end
+// run-rs — the RUST binding drives the clean `isrm_point.esm` end to end
 // through the PUBLIC earthsci_ast surface. NOTHING MODEL-SHAPED LIVES HERE:
 // this file names no pollutant, no column, no grid extent and no record count.
 //
@@ -26,7 +26,7 @@
 //   REDUCED   (ISRM_FIRSTN=n)    -> first n emission records, totals reported
 //
 // Emits the cross-language contract record (contract/results_schema.json) with
-// model="isrm.esm", mode="runtime_observed_graph", binding="rust".
+// model="isrm_point.esm", mode="runtime_observed_graph", binding="rust".
 // =============================================================================
 
 mod contract;

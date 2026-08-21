@@ -4,7 +4,8 @@
 # Everything derives from this file's own location (hence the isrm.esm checkout)
 # plus optional environment overrides, so the shim is portable across machines.
 #
-#   ISRM_MODEL    the .esm to drive          (default: <repo>/isrm.esm)
+#   ISRM_MODEL    the .esm to drive          (default: <repo>/isrm_point.esm,
+#                 which imports the shared templates from isrm_base.esm)
 #   ISRM_SCRATCH  bulk scratch root          (default: first writable of
 #                 /scratch.local/$USER, $SCRATCH, tempdir())
 #   EA_PATH       EarthSciAST.jl checkout    (default: <sibling>/EarthSciAST/pkg/EarthSciAST.jl)
@@ -24,7 +25,7 @@ const RUNJL_DIR  = @__DIR__                      # run-jl/
 const REPO       = dirname(RUNJL_DIR)            # the isrm.esm checkout
 const CODE_ROOT  = dirname(REPO)                 # where sibling checkouts live
 
-const MODEL    = get(ENV, "ISRM_MODEL", joinpath(REPO, "isrm.esm"))
+const MODEL    = get(ENV, "ISRM_MODEL", joinpath(REPO, "isrm_point.esm"))
 const ISRM_DIR = dirname(MODEL)
 
 const EA_PATH = get(ENV, "EA_PATH", joinpath(CODE_ROOT, "EarthSciAST", "pkg", "EarthSciAST.jl"))

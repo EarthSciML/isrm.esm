@@ -1,9 +1,12 @@
 # isrm.esm — the InMAP ISRM as a language-agnostic model
 
-`isrm.esm` states the InMAP source–receptor tutorial as **one**
+`isrm_point.esm` states the InMAP source–receptor tutorial as an
 [EarthSciAST](https://github.com/EarthSciML/EarthSciAST) `.esm` document, and
 computes it three times — once through each of EarthSciAST's Julia, Python, and
-Rust bindings — from that one document.
+Rust bindings — from that one document. It imports the geometry-independent
+half — the projection, the containment test, the contraction term, the health
+function — from `isrm_base.esm`, a template library meant to be shared with
+polygon- and line-geometry siblings (see [Two files](#two-files-and-where-the-seam-had-to-go)).
 
 The point is not that three programs produce the same number. It is that **one
 spec drives three independent engines**, and the engines agree.
@@ -106,7 +109,7 @@ cell ([`BUGS.md`](BUGS.md) §5.1), worth exactly +7.146760 deaths.
 **Then, correction.** Having shown it can compute what InMAP computes, the
 document declines InMAP's other plume-rise defect too — the inverted
 `layerFracs` interpolation ([`BUGS.md`](BUGS.md) §5.2), which misplaces 6.25% of
-emitted mass. That is the last row, and it is what `isrm.esm` computes today.
+emitted mass. That is the last row, and it is what `isrm_point.esm` computes today.
 **This document therefore no longer reproduces the tutorial, by design, and the
 published totals run about 1.35% low.**
 
@@ -305,7 +308,7 @@ into the next model layer or the one above that. The ISRM matrix has three
 emission layers for exactly this reason, and the InMAP tutorial uses all
 three.
 
-`isrm.esm` states the rise itself. Per emission record, in the document's own
+`isrm_point.esm` states the rise itself. Per emission record, in the document's own
 observeds: `stack_layer` (which model layer the stack top sits in, hence which
 cell's meteorology applies), `buoy_flux`, the four-branch `delta_h` —
 momentum-dominated, stable-buoyant, unstable-buoyant, or none when `F <= 0` —
@@ -431,10 +434,70 @@ find the roughly 43,650 that a point-in-rectangle containment actually admits
 — about one per record. The engine now walks the broad-phase candidates
 instead. See [Timing](#timing) for what that was worth.
 
+## Two files, and where the seam had to go
+
+`isrm_base.esm` is a **template-library file** (esm-spec §9.7.1): eleven
+`expression_templates` and nothing else. `isrm_point.esm` imports it with one
+edge inside the model —
+
+```json
+"expression_template_imports": [{ "ref": "./isrm_base.esm" }]
+```
+
+— and spells the shared math as `apply_expression_template` call sites. The
+library holds the Lambert-conformal forward projection (`lcc_forward_x` /
+`lcc_forward_y` over a shared `lcc_cone_n`), the cell-containment indicator
+(`cell_contains_point`, 26 call sites), the layer-major meteorology gather
+(`cell_at_model_layer`, 31 sites), the source-receptor contraction term
+(`sr_matvec`, 15 sites), the SR-layer sum, the µg/m³ scaling, the Krewski/Lepeule
+concentration-response function and the two receptor-rectangle fragments.
+`isrm_point.esm` keeps everything specific to an inventory of stacks: the FF10
+loader, the pollutant masks, the ASME plume rise, and the fifteen
+`(pathway, SR layer)` binning aggregates.
+
+**The seam is not a free choice.** Three constraints fix it:
+
+1. **Not a mounted subsystem.** The natural split — base owns the SR matrices and
+   the health math, each geometry document owns the emissions — is the one seam
+   the engine cannot cross. The projection-pushdown desugar reads *one model's
+   own* `variables` and observeds, before flattening
+   (`pushdown_rewrite.jl` `_pd_detect`; `simulate.jl` `prepare`). Put the SR
+   arrays or the `E_*` aggregates behind a §4.7 subsystem or a §10 coupling
+   boundary and the rewrite stops recognising the pattern, the support set is
+   never derived, and the fetch goes from 1,520 source rows to the whole matrix.
+
+2. **Templates, but only the aggregate *bodies*.** `_pd_apply` re-points a
+   matched aggregate's own `ranges`/`args`/`shape`/`join` in place, so those must
+   be authored at the call site; only the `expr` body may be a template, with the
+   rectangle factors passed as bindings. That is pinned by the conformance
+   fixture `pushdown/template_body`, and it is why every `E_*` and `conc_*`
+   wrapper stays in `isrm_point.esm`.
+
+3. **The library cannot own the axes.** §9.7.5 would let it carry `index_sets`
+   and `metaparameters`, but `providers_from_document` folds a loader select's
+   `range.stop: "N_SRC"` out of the raw document, before any §9.7 resolution.
+   So the five index sets and six metaparameters are declared per document —
+   about 2 KB duplicated. See [BUGS.md §3.8](BUGS.md).
+
+Getting the import edge to work at all took a fix in every binding
+([BUGS.md §3.7](BUGS.md)): Python and Rust were handing the pushdown recogniser
+an unresolved document, and Julia's build-time pre-passes had no expansion arm
+for a surviving template reference.
+
+**The split is a pure factoring.** It was produced by a transform that
+re-expands its own output and deep-compares all 79 equations against the
+original — 0 mismatches — and then checked end to end: at `ISRM_FIRSTN=200` all
+three bindings reproduce the pre-split `sr_lower` sha256
+`1c8a29f8e2e97cccadcb108042f970d93f3607fe23e9760a6690324e5c500ac6` and the same
+9-cell support set, and the Rust record is bit-identical to the pre-split one in
+every field except `model` and the timings.
+
 ## Layout
 
 ```
-isrm.esm          the model — one document, no variants
+isrm_point.esm    the model: point-source (stack) emissions through the ISRM
+isrm_base.esm     the template library it imports — the geometry-independent
+                  expression fragments, shared with future geometry siblings
 contract/         the shared result record: schema, the three emitters
                   (results.jl, results.py, run-rs/src/contract.rs), the
                   comparator, and plume_oracle.py — the offline record ->
@@ -693,3 +756,10 @@ charged to layer 0 and a live run no longer answers that model. What survives
 the re-baselining is asserted on still: the `ppl` digest and the five
 per-pathway emission totals, which plume rise cannot change and which
 `contract/plume_oracle.py` checks itself against.
+
+The single `isrm.esm` became `isrm_base.esm` + `isrm_point.esm` on 2026-08-21.
+It is a pure factoring, not a re-baselining — the two files expand back to the
+document `isrm.esm` was, equation for equation — so every record from before the
+split stays comparable, and `git show 4bfd01c:isrm.esm` is the last single-file
+form. The split is the first step toward polygon- and line-geometry siblings
+that share `isrm_base.esm`.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline oracle for the plume-rise addition to ``isrm.esm``: how is each EGU
+"""Offline oracle for the plume-rise addition to ``isrm_point.esm``: how is each EGU
 emission record's mass split across the SR matrix's three emission layers?
 
 Not "which layer": InMAP's ``sr.Reader.layerFracs`` splits a record across TWO
@@ -11,7 +11,7 @@ lower layer.
 
 Why this exists
 ---------------
-``isrm.esm`` states plume rise itself, in its own observeds, the way the
+``isrm_point.esm`` states plume rise itself, in its own observeds, the way the
 InMAP source-receptor tutorial (https://inmap.run/blog/2019/04/20/sr/) does —
 it moves most of the emitted mass up into SR layers 1 and 2. Plume rise
 changes exactly one intermediate quantity — the per-record
@@ -97,7 +97,7 @@ MET = ("Temperature", "WindSpeed", "S1", "SClass", "WindSpeedInverse",
 INT_ARRAYS = ("layers",)
 
 # The model layers the three SR emission layers were computed for. DECLARED
-# HERE, and deliberately NOT taken from the store, exactly as isrm.esm declares
+# HERE, and deliberately NOT taken from the store, exactly as isrm_point.esm declares
 # them in its SR_MODEL_L1 / SR_MODEL_L2 metaparameters.
 #
 # isrm_v1.2.1.ncf on Zenodo — the authoritative deposition — has
@@ -158,7 +158,7 @@ EXPECT = {
     # both are the document's own values, from
     # contract/records/ground-level-only/python.json. Agreeing with them proves
     # the oracle ingests the FF10 zip and contains points in cells exactly the
-    # way isrm.esm does — so a disagreement in the SR-layer assignment is about
+    # way isrm_point.esm does — so a disagreement in the SR-layer assignment is about
     # plume rise and nothing else.
     #
     # They survived the plume-rise re-baselining that retired those records:
@@ -435,7 +435,7 @@ def plume_layers(cache, cell, hs, ds, Ts, vs, rep: Report):
     #
     # Every model layer above the top entry gets the same weights as an exact
     # match on it, so capping the model layer there loses nothing — which is
-    # exactly the saturation isrm.esm's `plume_model_layer` performs.
+    # exactly the saturation isrm_point.esm's `plume_model_layer` performs.
     top = SR_MODEL_LAYERS[-1]
     M = np.minimum(plume_layer, top)
 

@@ -1,0 +1,897 @@
+{
+  "esm": "1.0.0",
+  "metadata": {
+    "name": "ISRM_base",
+    "description": "The geometry-independent half of the InMAP ISRM source-receptor model, as a TEMPLATE-LIBRARY file (esm-spec 9.7.1): the expression fragments every emission geometry shares \u2014 the Lambert-conformal forward projection, the cell-containment indicator, the layer-major meteorology gather, the source-receptor contraction term, the ug/m3 scaling and the log-linear concentration-response function. A consuming document (isrm_point.esm, and the polygon / line siblings) imports this file, declares its own variables, equations and data_sources, and spells the shared math as apply_expression_template call sites. WHY A LIBRARY AND NOT A MOUNTED SUBSYSTEM: a library file may not declare models or data_sources (9.7.1), so those are duplicated per consumer \u2014 but the projection-pushdown desugar reads ONE model's own variables and observeds, before flattening (pushdown_rewrite.jl _pd_detect, simulate.jl prepare). Split the SR arrays or the binning aggregates behind a component boundary and the rewrite stops recognising the pattern, the derived support set is never built, and the SR fetch goes from 1520 source rows to the whole 52411-row matrix. Templates are safe where a subsystem is not: detection expands apply_expression_template references before matching, and emission edits the CALL SITE's bindings, never the shared body (conformance fixture pushdown/template_body).",
+    "authors": [
+      "EarthSciML"
+    ],
+    "license": "MIT",
+    "created": "2026-08-21T00:00:00Z",
+    "tags": [
+      "isrm",
+      "inmap",
+      "source_receptor",
+      "library",
+      "grid",
+      "projection",
+      "health_impact"
+    ],
+    "references": [
+      {
+        "citation": "Tessum, C.W., Hill, J.D., Marshall, J.D. (2017). InMAP: A model for air pollution interventions. PLoS ONE 12(4): e0176131.",
+        "doi": "10.1371/journal.pone.0176131"
+      },
+      {
+        "citation": "InMAP ISRM tutorial (2022-12-15).",
+        "url": "https://inmap.run/blog/2022/12/15/tutorial/"
+      }
+    ],
+    "x_esd": {
+      "note": "THE CONTRACT WITH A CONSUMING DOCUMENT. This file owns eleven templates and nothing else. It does NOT own the data_sources, the variable declarations, or any aggregate WRAPPER \u2014 9.7.1 forbids the first two, and the third is a runtime constraint: the projection-pushdown rewrite re-points a matched aggregate's own `ranges`/`args`/`shape`/`join` in place, so those must be authored at the call site; only the aggregate's `expr` BODY may be a template (conformance fixture pushdown/template_body). It also does not own the AXES. A library may carry `index_sets` and `metaparameters` (9.7.5 / 9.7.6), but two consumers read those out of the RAW JSON before 9.7 resolution \u2014 the esio bridge's providers_from_document, which folds a loader select's `range.stop: \"N_SRC\"` while building providers, and the pushdown prepass \u2014 so src_cells / rcv_cells / all_cells / emis_layer / pathways and their sizing metaparameters stay declared in each consuming document. Template bodies name variables this file does not declare: the CRS constants (lat_0/lat_1/lat_2/lon_0/lcc_R/lcc_d2r/lcc_qp), the metaparameter N_SRC, the unit factor `fact`, and TotalPop / MortalityRate / pop_scale / mort_scale. Those are free names resolved in the consuming document; an importer that spells them differently rebinds them at the import edge (9.7.7 `rebind`) rather than editing this file. The index symbols `c`, `r`, `s` and `rcv` are LITERAL in the bodies: a call site must bind them as its aggregate's range keys with exactly these names."
+    }
+  },
+  "expression_templates": {
+    "cell_contains_point": {
+      "description": "1.0 when the record's projected point (ptx, pty) at index r falls in cell c's rectangle [xmin, xmax) x [ymin, ymax), else 0.0. Half-open on the upper edges so a point on a shared boundary lands in exactly one cell. This is the containment the projection-pushdown recogniser reads off a binning aggregate (CONFORMANCE_SPEC 5.5.6) \u2014 it must stay a conjunction of comparisons between a cell-indexed bound and a record-indexed coordinate.",
+      "params": [
+        "xmin",
+        "ymin",
+        "xmax",
+        "ymax",
+        "ptx",
+        "pty"
+      ],
+      "body": {
+        "op": "ifelse",
+        "args": [
+          {
+            "op": "and",
+            "args": [
+              {
+                "op": "<=",
+                "args": [
+                  {
+                    "op": "index",
+                    "args": [
+                      "xmin",
+                      "c"
+                    ]
+                  },
+                  {
+                    "op": "index",
+                    "args": [
+                      "ptx",
+                      "r"
+                    ]
+                  }
+                ]
+              },
+              {
+                "op": "<",
+                "args": [
+                  {
+                    "op": "index",
+                    "args": [
+                      "ptx",
+                      "r"
+                    ]
+                  },
+                  {
+                    "op": "index",
+                    "args": [
+                      "xmax",
+                      "c"
+                    ]
+                  }
+                ]
+              },
+              {
+                "op": "<=",
+                "args": [
+                  {
+                    "op": "index",
+                    "args": [
+                      "ymin",
+                      "c"
+                    ]
+                  },
+                  {
+                    "op": "index",
+                    "args": [
+                      "pty",
+                      "r"
+                    ]
+                  }
+                ]
+              },
+              {
+                "op": "<",
+                "args": [
+                  {
+                    "op": "index",
+                    "args": [
+                      "pty",
+                      "r"
+                    ]
+                  },
+                  {
+                    "op": "index",
+                    "args": [
+                      "ymax",
+                      "c"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          1.0,
+          0.0
+        ]
+      }
+    },
+    "lcc_cone_n": {
+      "description": "The Lambert-conformal cone constant for the InMAP grid's CRS, log(cos(lat_1)/cos(lat_2)) / log(tan(qp+lat_2/2)/tan(qp+lat_1/2)). Zero parameters: it depends only on the standard parallels, which the consuming document declares as lat_1 / lat_2 / lcc_qp / lcc_d2r.",
+      "params": [],
+      "body": {
+        "args": [
+          {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          "lat_1",
+                          "lcc_d2r"
+                        ],
+                        "op": "*"
+                      }
+                    ],
+                    "op": "cos"
+                  },
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          "lat_2",
+                          "lcc_d2r"
+                        ],
+                        "op": "*"
+                      }
+                    ],
+                    "op": "cos"
+                  }
+                ],
+                "op": "/"
+              }
+            ],
+            "op": "log"
+          },
+          {
+            "args": [
+              {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          "lcc_qp",
+                          {
+                            "args": [
+                              {
+                                "args": [
+                                  "lat_2",
+                                  "lcc_d2r"
+                                ],
+                                "op": "*"
+                              },
+                              2.0
+                            ],
+                            "op": "/"
+                          }
+                        ],
+                        "op": "+"
+                      }
+                    ],
+                    "op": "tan"
+                  },
+                  {
+                    "args": [
+                      {
+                        "args": [
+                          "lcc_qp",
+                          {
+                            "args": [
+                              {
+                                "args": [
+                                  "lat_1",
+                                  "lcc_d2r"
+                                ],
+                                "op": "*"
+                              },
+                              2.0
+                            ],
+                            "op": "/"
+                          }
+                        ],
+                        "op": "+"
+                      }
+                    ],
+                    "op": "tan"
+                  }
+                ],
+                "op": "/"
+              }
+            ],
+            "op": "log"
+          }
+        ],
+        "op": "/"
+      }
+    },
+    "lcc_forward_x": {
+      "description": "Lambert-conformal forward projection, easting. `lon` and `lat` are degree-valued expressions. Free names are the CRS constants the consuming document declares: lat_0/lat_1/lat_2/lon_0/lcc_R/lcc_d2r/lcc_qp.",
+      "params": [
+        "lon",
+        "lat"
+      ],
+      "body": {
+        "op": "*",
+        "args": [
+          {
+            "op": "/",
+            "args": [
+              {
+                "op": "*",
+                "args": [
+                  "lcc_R",
+                  {
+                    "op": "/",
+                    "args": [
+                      {
+                        "op": "*",
+                        "args": [
+                          {
+                            "op": "cos",
+                            "args": [
+                              {
+                                "op": "*",
+                                "args": [
+                                  "lat_1",
+                                  "lcc_d2r"
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "op": "^",
+                            "args": [
+                              {
+                                "op": "tan",
+                                "args": [
+                                  {
+                                    "op": "+",
+                                    "args": [
+                                      "lcc_qp",
+                                      {
+                                        "op": "/",
+                                        "args": [
+                                          {
+                                            "op": "*",
+                                            "args": [
+                                              "lat_1",
+                                              "lcc_d2r"
+                                            ]
+                                          },
+                                          2.0
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              {
+                                "op": "apply_expression_template",
+                                "args": [],
+                                "name": "lcc_cone_n",
+                                "bindings": {}
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "op": "apply_expression_template",
+                        "args": [],
+                        "name": "lcc_cone_n",
+                        "bindings": {}
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "op": "^",
+                "args": [
+                  {
+                    "op": "tan",
+                    "args": [
+                      {
+                        "op": "+",
+                        "args": [
+                          "lcc_qp",
+                          {
+                            "op": "/",
+                            "args": [
+                              {
+                                "op": "*",
+                                "args": [
+                                  "lat",
+                                  "lcc_d2r"
+                                ]
+                              },
+                              2.0
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "op": "apply_expression_template",
+                    "args": [],
+                    "name": "lcc_cone_n",
+                    "bindings": {}
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "op": "sin",
+            "args": [
+              {
+                "op": "*",
+                "args": [
+                  {
+                    "op": "apply_expression_template",
+                    "args": [],
+                    "name": "lcc_cone_n",
+                    "bindings": {}
+                  },
+                  {
+                    "op": "-",
+                    "args": [
+                      {
+                        "op": "*",
+                        "args": [
+                          "lon",
+                          "lcc_d2r"
+                        ]
+                      },
+                      {
+                        "op": "*",
+                        "args": [
+                          "lon_0",
+                          "lcc_d2r"
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "lcc_forward_y": {
+      "description": "Lambert-conformal forward projection, northing. See lcc_forward_x.",
+      "params": [
+        "lon",
+        "lat"
+      ],
+      "body": {
+        "op": "-",
+        "args": [
+          {
+            "op": "/",
+            "args": [
+              {
+                "op": "*",
+                "args": [
+                  "lcc_R",
+                  {
+                    "op": "/",
+                    "args": [
+                      {
+                        "op": "*",
+                        "args": [
+                          {
+                            "op": "cos",
+                            "args": [
+                              {
+                                "op": "*",
+                                "args": [
+                                  "lat_1",
+                                  "lcc_d2r"
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "op": "^",
+                            "args": [
+                              {
+                                "op": "tan",
+                                "args": [
+                                  {
+                                    "op": "+",
+                                    "args": [
+                                      "lcc_qp",
+                                      {
+                                        "op": "/",
+                                        "args": [
+                                          {
+                                            "op": "*",
+                                            "args": [
+                                              "lat_1",
+                                              "lcc_d2r"
+                                            ]
+                                          },
+                                          2.0
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              {
+                                "op": "apply_expression_template",
+                                "args": [],
+                                "name": "lcc_cone_n",
+                                "bindings": {}
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "op": "apply_expression_template",
+                        "args": [],
+                        "name": "lcc_cone_n",
+                        "bindings": {}
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "op": "^",
+                "args": [
+                  {
+                    "op": "tan",
+                    "args": [
+                      {
+                        "op": "+",
+                        "args": [
+                          "lcc_qp",
+                          {
+                            "op": "/",
+                            "args": [
+                              {
+                                "op": "*",
+                                "args": [
+                                  "lat_0",
+                                  "lcc_d2r"
+                                ]
+                              },
+                              2.0
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "op": "apply_expression_template",
+                    "args": [],
+                    "name": "lcc_cone_n",
+                    "bindings": {}
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "op": "*",
+            "args": [
+              {
+                "op": "/",
+                "args": [
+                  {
+                    "op": "*",
+                    "args": [
+                      "lcc_R",
+                      {
+                        "op": "/",
+                        "args": [
+                          {
+                            "op": "*",
+                            "args": [
+                              {
+                                "op": "cos",
+                                "args": [
+                                  {
+                                    "op": "*",
+                                    "args": [
+                                      "lat_1",
+                                      "lcc_d2r"
+                                    ]
+                                  }
+                                ]
+                              },
+                              {
+                                "op": "^",
+                                "args": [
+                                  {
+                                    "op": "tan",
+                                    "args": [
+                                      {
+                                        "op": "+",
+                                        "args": [
+                                          "lcc_qp",
+                                          {
+                                            "op": "/",
+                                            "args": [
+                                              {
+                                                "op": "*",
+                                                "args": [
+                                                  "lat_1",
+                                                  "lcc_d2r"
+                                                ]
+                                              },
+                                              2.0
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "op": "apply_expression_template",
+                                    "args": [],
+                                    "name": "lcc_cone_n",
+                                    "bindings": {}
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "op": "apply_expression_template",
+                            "args": [],
+                            "name": "lcc_cone_n",
+                            "bindings": {}
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "op": "^",
+                    "args": [
+                      {
+                        "op": "tan",
+                        "args": [
+                          {
+                            "op": "+",
+                            "args": [
+                              "lcc_qp",
+                              {
+                                "op": "/",
+                                "args": [
+                                  {
+                                    "op": "*",
+                                    "args": [
+                                      "lat",
+                                      "lcc_d2r"
+                                    ]
+                                  },
+                                  2.0
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "op": "apply_expression_template",
+                        "args": [],
+                        "name": "lcc_cone_n",
+                        "bindings": {}
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "op": "cos",
+                "args": [
+                  {
+                    "op": "*",
+                    "args": [
+                      {
+                        "op": "apply_expression_template",
+                        "args": [],
+                        "name": "lcc_cone_n",
+                        "bindings": {}
+                      },
+                      {
+                        "op": "-",
+                        "args": [
+                          {
+                            "op": "*",
+                            "args": [
+                              "lon",
+                              "lcc_d2r"
+                            ]
+                          },
+                          {
+                            "op": "*",
+                            "args": [
+                              "lon_0",
+                              "lcc_d2r"
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "cell_at_model_layer": {
+      "description": "Gather `fld` at model layer `layer` above source cell c. The InMAP grid is laid out LAYER-MAJOR over all_cells, and layers 0-7 share a byte-identical horizontal grid of N_SRC cells, so the cell above c in layer k is the flat offset k*N_SRC + c. `layer` may be an integer literal or a per-record expression.",
+      "params": [
+        "fld",
+        "layer"
+      ],
+      "body": {
+        "op": "index",
+        "args": [
+          "fld",
+          {
+            "op": "+",
+            "args": [
+              {
+                "op": "*",
+                "args": [
+                  "layer",
+                  "N_SRC"
+                ]
+              },
+              "c"
+            ]
+          }
+        ]
+      }
+    },
+    "sr_matvec": {
+      "description": "One source-receptor contraction term: SR array `A`[s, rcv] times the per-source-cell emission `E`[s]. The enclosing aggregate stays authored in the consuming document \u2014 the projection-pushdown rewrite re-points its reduction axis onto the derived support set and cannot reach into a shared template body to do it.",
+      "params": [
+        "A",
+        "E"
+      ],
+      "body": {
+        "op": "*",
+        "args": [
+          {
+            "op": "index",
+            "args": [
+              "A",
+              "s",
+              "rcv"
+            ]
+          },
+          {
+            "op": "index",
+            "args": [
+              "E",
+              "s"
+            ]
+          }
+        ]
+      }
+    },
+    "sum_sr_layers": {
+      "description": "Sum a per-SR-emission-layer triple at receptor rcv. The three SR emission layers are the model layers [0, SR_MODEL_L1, SR_MODEL_L2].",
+      "params": [
+        "l0",
+        "l1",
+        "l2"
+      ],
+      "body": {
+        "op": "+",
+        "args": [
+          {
+            "op": "index",
+            "args": [
+              "l0",
+              "rcv"
+            ]
+          },
+          {
+            "op": "index",
+            "args": [
+              "l1",
+              "rcv"
+            ]
+          },
+          {
+            "op": "index",
+            "args": [
+              "l2",
+              "rcv"
+            ]
+          }
+        ]
+      }
+    },
+    "to_ug_m3": {
+      "description": "Scale a contracted concentration at receptor rcv by `fact`, the short-tons-per-year to ug/s emission conversion the SR matrix expects. `fact` is a free name the consuming document declares.",
+      "params": [
+        "x"
+      ],
+      "body": {
+        "op": "*",
+        "args": [
+          "fact",
+          {
+            "op": "index",
+            "args": [
+              "x",
+              "rcv"
+            ]
+          }
+        ]
+      }
+    },
+    "krewski_deaths": {
+      "description": "PM2.5-attributable deaths at receptor rcv from a log-linear concentration-response function: (exp(log(rr)/10 * pm) - 1) * population * baseline mortality. `rr` is the relative risk per 10 ug/m3. Free names: TotalPop, MortalityRate, pop_scale, mort_scale.",
+      "params": [
+        "rr",
+        "pm"
+      ],
+      "body": {
+        "op": "*",
+        "args": [
+          {
+            "op": "*",
+            "args": [
+              {
+                "op": "*",
+                "args": [
+                  {
+                    "op": "-",
+                    "args": [
+                      {
+                        "op": "exp",
+                        "args": [
+                          {
+                            "op": "*",
+                            "args": [
+                              {
+                                "op": "/",
+                                "args": [
+                                  {
+                                    "op": "log",
+                                    "args": [
+                                      "rr"
+                                    ]
+                                  },
+                                  10
+                                ]
+                              },
+                              {
+                                "op": "index",
+                                "args": [
+                                  "pm",
+                                  "rcv"
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      1
+                    ]
+                  },
+                  {
+                    "op": "*",
+                    "args": [
+                      {
+                        "op": "index",
+                        "args": [
+                          "TotalPop",
+                          "rcv"
+                        ]
+                      },
+                      "pop_scale"
+                    ]
+                  }
+                ]
+              },
+              {
+                "op": "/",
+                "args": [
+                  {
+                    "op": "index",
+                    "args": [
+                      "MortalityRate",
+                      "rcv"
+                    ]
+                  },
+                  100000
+                ]
+              }
+            ]
+          },
+          "mort_scale"
+        ]
+      }
+    },
+    "receptor_edge": {
+      "description": "A receptor cell's rectangle edge, sliced out of the full-grid array `edge` (the receptor set is the leading N_RCV cells of the InMAP grid).",
+      "params": [
+        "edge"
+      ],
+      "body": {
+        "op": "index",
+        "args": [
+          "edge",
+          "rcv"
+        ]
+      }
+    },
+    "receptor_centre": {
+      "description": "A receptor cell's centre coordinate, the midpoint of its `lo` and `hi` rectangle edges.",
+      "params": [
+        "lo",
+        "hi"
+      ],
+      "body": {
+        "op": "/",
+        "args": [
+          {
+            "op": "+",
+            "args": [
+              {
+                "op": "index",
+                "args": [
+                  "lo",
+                  "rcv"
+                ]
+              },
+              {
+                "op": "index",
+                "args": [
+                  "hi",
+                  "rcv"
+                ]
+              }
+            ]
+          },
+          2
+        ]
+      }
+    }
+  }
+}

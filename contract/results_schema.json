@@ -18,7 +18,7 @@
     },
     "model": {
       "type": "string",
-      "description": "Basename of the .esm driven, e.g. \"isrm.esm\". Records from different model files are comparable only if the models are numerically equivalent — isrm.esm, isrm_clean.esm and isrm_pushdown.esm all are."
+      "description": "Basename of the .esm driven, e.g. \"isrm_point.esm\". Records from different model files are comparable only if the models are numerically equivalent — isrm_point.esm and its pre-split predecessor isrm.esm are (the split into isrm_base.esm + isrm_point.esm is a pure factoring, verified by re-expansion), as were isrm_clean.esm and isrm_pushdown.esm."
     },
     "mode": {
       "type": "string",
