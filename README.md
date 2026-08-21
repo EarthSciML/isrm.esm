@@ -82,10 +82,10 @@ agreement above is what says it is worth doing.
 
 ### Result
 
-Full scale, Rust, against the live `s3://inmap-model/isrm_v1.2.2.zarr` (the
-repaired and rechunked store; the values are bit-identical to `isrm_v1.2.1.zarr`
-after its repair, verified by running both — the rechunk fetches 3.5 GB instead
-of 40 GB but costs 28% in wall clock, which is a trade rather than a win):
+Full scale, against the live `s3://inmap-model/isrm_v1.2.2.zarr` (the repaired
+and rechunked store; values bit-identical to `isrm_v1.2.1.zarr` after its
+repair, verified by running both — the rechunk fetches 3.5 GB instead of 40 GB,
+and since [`BUGS.md`](BUGS.md) §4.0 it is no slower):
 
 | | `sum(deathsK)` | `sum(deathsL)` | vs the tutorial |
 |---|---|---|---|

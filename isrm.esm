@@ -38,7 +38,7 @@
    }
   ],
   "x_esd": {
-   "note": "Single-document pipeline. The loaders declare their own ingest; the model states the physics. Per emission record: LCC projection -> rectangle spatial join onto its source cell -> ASME plume rise at that cell's meteorology -> sr.Reader.layerFracs, which splits the record's mass across the SR emission layers its plume falls between -> the per-(cell, layer) emission binning -> fifteen gated SR contractions -> concentrations, PM2.5 and deaths. THE SR MODEL LAYERS ARE DECLARED, NOT READ. sr.layers is [0, 3, 6] in the authoritative isrm_v1.2.1.ncf on Zenodo; isrm_v1.2.1.zarr serves [0, 1, 2], a machine-generated arange that displaced it during the conversion. See the SR_MODEL_L1 metaparameter for the full evidence. An earlier revision of this document read the store's value and therefore assigned sr_layer = min(plume_layer, 2) - a clamp, not an interpolation - and ran 12.5% below the tutorial. THE STORE WAS REPAIRED IN PLACE ON 2026-08-20 and now serves [0, 3, 6]; the declaration here is kept anyway, see SR_MODEL_L1. THIS DOCUMENT NOW READS isrm_v1.2.2.zarr, the rechunked republication of that repaired store: identical values, [1, 5, 52411] chunks and zstd instead of [1, 100, 52411] and lz4. The old chunk grid made the smallest readable unit 100 source cells, so this model - which touches 1520 of 52411 - had to fetch 79% of the store to use 2.9% of it. Under the new grid it fetches 11.9%. It also carried an argument, in this very note, that the published totals were UNREACHABLE by any layer assignment because they sat 3.46% above a ceiling implied by non-negative plume rise. That argument was valid and its premise was false. IT IS RETRACTED. The InMAP source-receptor tutorial (https://inmap.run/blog/2019/04/20/sr/) reports 6928.959583 deaths (Krewski) and 15623.924632 (Lepeule); emitting everything at ground level instead gives 7524.918845602511 / 16979.632171487083. THIS DOCUMENT DELIBERATELY DOES NOT REPRODUCE THOSE PUBLISHED TOTALS. It states CORRECT physics, and InMAP's are not: it declines BOTH of InMAP's plume-rise defects - the high-plume source-index defect (see `w_sr2`; 654 of 43650 records, 0.43% of emitted mass, charged to the wrong source cell) and the inverted layerFracs interpolation (see `w_sr0`; 6.25% of emitted mass placed on the wrong side of a split). Full scale, this document computes 7022.724781 / 15835.993596 against the tutorial's 6928.959583 / 15623.924632, i.e. the published pair runs about 1.35% low. THE PIPELINE WAS PROVEN AGAINST INMAP BEFORE THE PHYSICS WAS CORRECTED, which is the only reason the divergence reads as a fix rather than a bug: reproducing InMAP's arithmetic exactly, this document matched the live inmap cloud service on the first 200 emission records to 8.9e-9 (49.09146956 / 110.40696810 against 49.091470 / 110.406968), on a subset where neither defect can fire, and matched it at full scale to +0.103%, the exact worth of the one defect it already declined. Agreement first, correction second.",
+   "note": "Single-document pipeline. The loaders declare their own ingest; the model states the physics. Per emission record: LCC projection -> rectangle spatial join onto its source cell -> ASME plume rise at that cell's meteorology -> sr.Reader.layerFracs, which splits the record's mass across the SR emission layers its plume falls between -> the per-(cell, layer) emission binning -> fifteen gated SR contractions -> concentrations, PM2.5 and deaths. THE SR MODEL LAYERS ARE DECLARED, NOT READ. sr.layers is [0, 3, 6] in the authoritative isrm_v1.2.1.ncf on Zenodo; isrm_v1.2.1.zarr serves [0, 1, 2], a machine-generated arange that displaced it during the conversion. See the SR_MODEL_L1 metaparameter for the full evidence. An earlier revision of this document read the store's value and therefore assigned sr_layer = min(plume_layer, 2) - a clamp, not an interpolation - and ran 12.5% below the tutorial. THE STORE WAS REPAIRED IN PLACE ON 2026-08-20 and now serves [0, 3, 6]; the declaration here is kept anyway, see SR_MODEL_L1. THIS DOCUMENT READS isrm_v1.2.2.zarr, the rechunked republication of that repaired store: identical values, [1, 5, 52411] chunks and zstd instead of [1, 100, 52411] and lz4. A full run fetches 3.5 GB instead of 40 GB. THIS DOCUMENT NOW READS isrm_v1.2.2.zarr, the rechunked republication of that repaired store: identical values, [1, 5, 52411] chunks and zstd instead of [1, 100, 52411] and lz4. The old chunk grid made the smallest readable unit 100 source cells, so this model - which touches 1520 of 52411 - had to fetch 79% of the store to use 2.9% of it. Under the new grid it fetches 11.9%. It also carried an argument, in this very note, that the published totals were UNREACHABLE by any layer assignment because they sat 3.46% above a ceiling implied by non-negative plume rise. That argument was valid and its premise was false. IT IS RETRACTED. The InMAP source-receptor tutorial (https://inmap.run/blog/2019/04/20/sr/) reports 6928.959583 deaths (Krewski) and 15623.924632 (Lepeule); emitting everything at ground level instead gives 7524.918845602511 / 16979.632171487083. THIS DOCUMENT DELIBERATELY DOES NOT REPRODUCE THOSE PUBLISHED TOTALS. It states CORRECT physics, and InMAP's are not: it declines BOTH of InMAP's plume-rise defects - the high-plume source-index defect (see `w_sr2`; 654 of 43650 records, 0.43% of emitted mass, charged to the wrong source cell) and the inverted layerFracs interpolation (see `w_sr0`; 6.25% of emitted mass placed on the wrong side of a split). Full scale, this document computes 7022.724781 / 15835.993596 against the tutorial's 6928.959583 / 15623.924632, i.e. the published pair runs about 1.35% low. THE PIPELINE WAS PROVEN AGAINST INMAP BEFORE THE PHYSICS WAS CORRECTED, which is the only reason the divergence reads as a fix rather than a bug: reproducing InMAP's arithmetic exactly, this document matched the live inmap cloud service on the first 200 emission records to 8.9e-9 (49.09146956 / 110.40696810 against 49.091470 / 110.406968), on a subset where neither defect can fire, and matched it at full scale to +0.103%, the exact worth of the one defect it already declined. Agreement first, correction second.",
    "phase2_pushdown_DRAFT": {
     "summary": "HISTORICAL. A draft of the projection pushdown, kept as provenance: what it asks Phase-2-core for has since landed, and the single `ISRM_SR` loader it names has since been split into ISRM_Grid + ISRM_SR_L0/L1/L2 so each SR emission layer can be gated on its own. Read the loaders and `metadata.x_esd.pushdown` (written by the rewrite at run time) for what is actually true. DRAFT projection-pushdown variant of isrm.esm. The runner pre-pass that computed `ppl` (the distinct emission-bearing source cells) is replaced by an in-.esm value-invention producer aggregate `emis_src_cells_faq` (kind:derived index set emis_src_cells). This document will NOT validate or build until Phase-2-core lands the engine support listed below; it is authored as correct as the schema allows and modelled on tests/valid/geometry/bin_skolem_spatial_join.esm + conservative_regrid_overlap_join.esm.",
     "requires_phase2_core": {
@@ -144,7 +144,7 @@
   "ISRM_Grid": {
    "kind": "static",
    "source": {
-    "url_template": "s3://inmap-model/isrm_v1.2.1.zarr/"
+    "url_template": "s3://inmap-model/isrm_v1.2.2.zarr/"
    },
    "reference": {
     "url": "https://inmap.run/blog/2022/12/15/tutorial/",
@@ -300,7 +300,7 @@
   "ISRM_SR_L0": {
    "kind": "static",
    "source": {
-    "url_template": "s3://inmap-model/isrm_v1.2.1.zarr/"
+    "url_template": "s3://inmap-model/isrm_v1.2.2.zarr/"
    },
    "reference": {
     "url": "https://inmap.run/blog/2022/12/15/tutorial/",
@@ -333,7 +333,7 @@
        ],
        "chunks": [
         1,
-        100,
+        5,
         52411
        ],
        "dtype": "<f4",
@@ -349,7 +349,7 @@
        ],
        "chunks": [
         1,
-        100,
+        5,
         52411
        ],
        "dtype": "<f4"
@@ -362,7 +362,7 @@
        ],
        "chunks": [
         1,
-        100,
+        5,
         52411
        ],
        "dtype": "<f4"
@@ -375,7 +375,7 @@
        ],
        "chunks": [
         1,
-        100,
+        5,
         52411
        ],
        "dtype": "<f4"
@@ -388,7 +388,7 @@
        ],
        "chunks": [
         1,
-        100,
+        5,
         52411
        ],
        "dtype": "<f4"
@@ -421,7 +421,7 @@
   "ISRM_SR_L1": {
    "kind": "static",
    "source": {
-    "url_template": "s3://inmap-model/isrm_v1.2.1.zarr/"
+    "url_template": "s3://inmap-model/isrm_v1.2.2.zarr/"
    },
    "reference": {
     "url": "https://inmap.run/blog/2022/12/15/tutorial/",
@@ -454,7 +454,7 @@
        ],
        "chunks": [
         1,
-        100,
+        5,
         52411
        ],
        "dtype": "<f4",
@@ -470,7 +470,7 @@
        ],
        "chunks": [
         1,
-        100,
+        5,
         52411
        ],
        "dtype": "<f4"
@@ -483,7 +483,7 @@
        ],
        "chunks": [
         1,
-        100,
+        5,
         52411
        ],
        "dtype": "<f4"
@@ -496,7 +496,7 @@
        ],
        "chunks": [
         1,
-        100,
+        5,
         52411
        ],
        "dtype": "<f4"
@@ -509,7 +509,7 @@
        ],
        "chunks": [
         1,
-        100,
+        5,
         52411
        ],
        "dtype": "<f4"
@@ -542,7 +542,7 @@
   "ISRM_SR_L2": {
    "kind": "static",
    "source": {
-    "url_template": "s3://inmap-model/isrm_v1.2.1.zarr/"
+    "url_template": "s3://inmap-model/isrm_v1.2.2.zarr/"
    },
    "reference": {
     "url": "https://inmap.run/blog/2022/12/15/tutorial/",
@@ -575,7 +575,7 @@
        ],
        "chunks": [
         1,
-        100,
+        5,
         52411
        ],
        "dtype": "<f4",
@@ -591,7 +591,7 @@
        ],
        "chunks": [
         1,
-        100,
+        5,
         52411
        ],
        "dtype": "<f4"
@@ -604,7 +604,7 @@
        ],
        "chunks": [
         1,
-        100,
+        5,
         52411
        ],
        "dtype": "<f4"
@@ -617,7 +617,7 @@
        ],
        "chunks": [
         1,
-        100,
+        5,
         52411
        ],
        "dtype": "<f4"
@@ -630,7 +630,7 @@
        ],
        "chunks": [
         1,
-        100,
+        5,
         52411
        ],
        "dtype": "<f4"
