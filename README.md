@@ -57,7 +57,7 @@ binding's evaluation of the document's observed graph.
 
 Full scale: 52,411 receptor cells × 1,520 emission-bearing source cells ×
 43,650 EGU FF10 emission records, against the live
-`s3://inmap-model/isrm_v1.2.1.zarr` — and now with each record's mass split
+`s3://inmap-model/isrm_v1.2.2.zarr` — and now with each record's mass split
 across the SR emission layers its plume falls between, which makes the
 contraction fifteen SR slabs (five pathways × three layers) rather than five.
 
@@ -82,7 +82,9 @@ agreement above is what says it is worth doing.
 
 ### Result
 
-Full scale, Rust, against the live `s3://inmap-model/isrm_v1.2.1.zarr`:
+Full scale, Rust, against the live `s3://inmap-model/isrm_v1.2.2.zarr` (the
+repaired and rechunked store; the values are bit-identical to `isrm_v1.2.1.zarr`
+after its repair, verified by running both):
 
 | | `sum(deathsK)` | `sum(deathsL)` | vs the tutorial |
 |---|---|---|---|
@@ -127,7 +129,7 @@ layer indices the SR calculation was performed for, and:
 | source | `layers` |
 |---|---|
 | `isrm_v1.2.1.ncf` (Zenodo) | **`[0, 3, 6]`** |
-| `isrm_v1.2.1.zarr` (this store) | `[0, 1, 2]` |
+| `isrm_v1.2.1.zarr` (as published, before the 2026-08-20 repair) | `[0, 1, 2]` |
 
 `[0,1,2]` is a machine-generated arange that displaced the real variable during
 the zarr conversion. Corroboration, independent of the NetCDF: `sr/sr.go`
