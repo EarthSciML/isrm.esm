@@ -338,8 +338,13 @@ descriptions now say why, where four used to say the opposite.
 * A **rechunked and recompressed** copy was published alongside it as
   `s3://inmap-model/isrm_v1.2.2.zarr` — same values, `[1, 5, 52411]` chunks and
   zstd instead of `[1, 100, 52411]` and lz4, plus consolidated `.zmetadata` so
-  the store can be opened over plain HTTPS at all. See `RECHUNK.md` in the
-  repair kit for the measurements behind those choices.
+  the store can be opened over plain HTTPS at all. The document reads it as of
+  `55fd0ec`. Measured: a full run fetches **3.5 GB instead of 40 GB**, but
+  PREPARE is **28% slower** (902 s vs 704 s, both warm), because 56,463 small
+  chunks cost more in per-object overhead than 18,978 large ones save in bytes.
+  That is a trade, not a win, and the byte side is the half worth having. See
+  `RECHUNK.md` — including the part where the recommendation optimised bytes and
+  assumed time would follow it, which it did not.
 
 ---
 
