@@ -61,24 +61,22 @@ Full scale: 52,411 receptor cells × 1,520 emission-bearing source cells ×
 across the SR emission layers its plume falls between, which makes the
 contraction fifteen SR slabs (five pathways × three layers) rather than five.
 
-**At reduced scale the document now reproduces the live `inmap cloud` service
-exactly.** On the first 200 emission records, both bindings:
+**At reduced scale the document reproduced the live `inmap cloud` service
+exactly** — while it still carried InMAP's inverted `layerFracs`. On the first
+200 emission records:
 
 | | `sum(deathsK)` | `sum(deathsL)` |
 |---|---|---|
-| this document, Julia | 49.09146956422705 | 110.40696810124838 |
-| this document, Rust | 49.09146956422743 | 110.40696810124905 |
+| this document *reproducing InMAP*, Julia | 49.09146956422705 | 110.40696810124838 |
+| this document *reproducing InMAP*, Rust | 49.09146956422743 | 110.40696810124905 |
 | **live `inmap cloud`, same 200 records** | **49.091470** | **110.406968** |
 
-That is 8.9e-9 and 9.2e-10 relative — inside the precision the service prints.
-Before this change the same run gave `47.780033` / `107.455964`.
-
-**No full-scale run of the current document has been made.** The last
-full-scale number in this file, `6063.777261048292` (−12.49% against the
-blog's `6928.959583`), was produced by the *previous* document, the one that
-clamped every record to a single SR layer, and is void as a statement about
-this one. Full scale costs ~1.5 h and is the next thing to do; the reduced
-agreement above is what says it is worth doing.
+That is 8.9e-9 and 9.2e-10 relative — inside the precision the service prints,
+and it is what licensed correcting the interpolation afterwards. Before plume
+rise the same run gave `47.780033` / `107.455964`; with the interpolation
+corrected — what the document computes today — it gives **49.11639491165982 /
+110.46292733178377**, in Python and Rust alike, which is the pair
+`contract/compare_results.py` now holds.
 
 ### Result
 
@@ -388,14 +386,16 @@ it does not. So the group should punch above its 0.43% weight, and in the
 direction the argument predicts: this document's totals should come out
 **higher** than the blog's.
 
-**How much is not currently measured.** This section used to quote `+0.79%` on
-`deathsK` and `+0.82%` on `deathsL`; both came from a full-scale run of the
-*previous* document — the one that clamped every record to a single SR layer
-under the corrupt `layers` — and neither is a statement about this one. The
-figures to replace them come from the next full-scale run. What is measured is
-that at `ISRM_FIRSTN=200`, where this group is empty, the document reproduces
-the live `inmap cloud` service to 8.9e-9, which is the strongest evidence
-available that the *rest* of the model is not contributing to any residual.
+**How much, measured.** The InMAP-faithful full-scale run — this document
+reproducing InMAP's inverted interpolation, so that this defect is the only
+thing left between them — gives `6936.106343` against the tutorial's
+`6928.959583`: **+0.103%**, or +7.146760 deaths. That is the whole of the
+remaining gap, and it is the direction the argument predicts. (An earlier
+`+0.79%` / `+0.82%` quoted here came from the previous document, the one that
+clamped every record to a single SR layer under the corrupt `layers`, and is
+void.) Corroborating it: at `ISRM_FIRSTN=200`, where this group is empty, the
+same document reproduces the live `inmap cloud` service to 8.9e-9, so the
+*rest* of the model contributes nothing to the residual.
 
 The `above_model_layer_7` block in `contract/records/plume_oracle.json` counts
 and quantifies the group, per pathway, so whatever residual the full-scale run
@@ -557,11 +557,17 @@ Written 2026-08-19, revised 2026-08-20, and worth checking before trusting it.
   2026-08-19 and `Model` is `additionalProperties: false`, so the old spelling
   made the whole document fail validation at load, in every binding, for
   reasons unrelated to anything in it. The block's contents are unchanged.
-* **Rust did not build (2026-08-19).** `earthsci-ast-rs` called
+* **Rust did not build, twice — FIXED 2026-08-20.** `earthsci-ast-rs` called
   `earthsciio::DataLoader::reader_options`, which existed on no EarthSciIO
-  branch. Fixed elsewhere; `cargo build --release` against the canonical
-  sibling checkouts succeeds and the binary has produced records at both
-  truncations.
+  branch; then, after the 1.0.0 migration, it imported `earthsciio::DataSource`,
+  which the published crate did not have either. The name is settled as
+  `DataSource` and EarthSciIO 0.1.2 exports it (keeping `DataLoader` as a
+  deprecated alias), and `run-rs/Cargo.toml` patches the registry entry onto the
+  sibling checkout so the shim and the bridge share one crate. What the build
+  break had been hiding is [`BUGS.md`](BUGS.md) §4.3: the Rust bridge still read
+  the 0.x `data_sources[l].variables` map, so against the 1.0.0 document it
+  built **no providers at all**. Both fixed; `run-rs` now produces records at
+  both truncations and at full scale, and they match Python's to 3e-15.
 * **Python stopped inside `prepare` — FIXED 2026-08-19.** The build-time hoist
   dropped `stack_layer` with *"join 'overlap' envelope factor 'src_W' is not
   bound as build-time const-array data"*, and every downstream observed went

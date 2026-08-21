@@ -258,15 +258,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cmake"
-version = "0.1.58"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0f78a02292a74a88ac736019ab962ece0bc380e3f977bf72e376c5d78ff0678"
-dependencies = [
- "cc",
-]
-
-[[package]]
 name = "convert_case"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -507,7 +498,7 @@ checksum = "e1d926b4d407d372f141f93bb444696142c29d32962ccbd3531117cf3aa0bfa9"
 
 [[package]]
 name = "earthsci-ast"
-version = "0.9.0"
+version = "0.1.1"
 dependencies = [
  "diffsol",
  "earthsciio",
@@ -517,7 +508,7 @@ dependencies = [
  "ndarray 0.16.1",
  "rstar",
  "rustc-hash",
- "s2bindings",
+ "s2rst",
  "serde",
  "serde_json",
  "smallvec",
@@ -527,7 +518,7 @@ dependencies = [
 
 [[package]]
 name = "earthsciio"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "csv",
  "fs2",
@@ -541,6 +532,7 @@ dependencies = [
  "time",
  "zarrs",
  "zip",
+ "zstd",
 ]
 
 [[package]]
@@ -2772,19 +2764,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
-name = "s2bindings"
-version = "0.1.0"
-source = "git+https://github.com/EarthSciML/s2bindings.rs?tag=v0.1.0#56b56b8e3ea5acc5c25a9f6bbbb8c59f1518edba"
+name = "s2rst"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab0517725abf52ef524b2a34705b505412ce66f163f9505c3d2c974df572648d"
 dependencies = [
- "s2bindings-sys",
-]
-
-[[package]]
-name = "s2bindings-sys"
-version = "0.1.0"
-source = "git+https://github.com/EarthSciML/s2bindings.rs?tag=v0.1.0#56b56b8e3ea5acc5c25a9f6bbbb8c59f1518edba"
-dependencies = [
- "cmake",
+ "num-bigint",
+ "num-traits",
 ]
 
 [[package]]
@@ -3163,6 +3149,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cdb87b95ec50ddfa440816d227a17b2ccbdda963a316a727fda0fc4334f7d134"
 dependencies = [
  "deranged",
+ "js-sys",
  "num-conv",
  "powerfmt",
  "serde_core",

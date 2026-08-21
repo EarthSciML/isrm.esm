@@ -34,5 +34,15 @@ ndarray = "0.16"
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 sha2 = "0.10"
 
+# `earthsci-ast` declares `earthsciio = "0.1"` from crates.io so its own CI can
+# resolve the manifest without a sibling checkout (see that crate's comment on
+# the dependency). This shim reads the SAME EarthSciIO types the bridge does, so
+# the two must be ONE crate, not a registry copy plus a path copy — patch the
+# registry entry to the local checkout for the whole graph. Without this the
+# bridge compiles against the PUBLISHED EarthSciIO while the shim uses the
+# working tree, and the two disagree about `DataSource` the moment either moves.
+[patch.crates-io]
+earthsciio = { path = "../../EarthSciIO/rust" }
+
 [profile.release]
 debug = false

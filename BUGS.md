@@ -203,7 +203,10 @@ and falsely rejected a shared *valid* fixture; Julia never called
 
 ---
 
-## 4. Defects that cost only performance
+## 4. Defects in the engines, not in the physics
+
+Two cost only performance (§4.0, §4.1); two stopped a binding from running at
+all (§4.2, §4.3). None of them changed a number that came out.
 
 ### 4.0 Every warm cache hit pays a network round-trip — FIXED
 
@@ -243,7 +246,7 @@ this fixed the smaller chunking wins on both axes, measured: 233.1 s against
 262.2 s, and the document reads it again.
 
 **It needed a second fix to be safe**: `temporal` was declared in `.esm` sources
-but never passed to `DataLoader` by `providers_from_document`, so no document
+but never passed to `DataSource` by `providers_from_document`, so no document
 could say `immutable` at all — and worse, once an absent `temporal` means
 immutable, a dropped cadence stops being ignored and starts pinning stale bytes
 permanently. The two had to ship together, and did.
@@ -275,9 +278,45 @@ interpreter gap" was largely this.
 
 `earthsci-ast-rs` called `earthsciio::DataLoader::reader_options`, which existed
 nowhere in EarthSciIO on any branch, from EarthSciAST commit `8b473947` onward.
+It broke a second time the same way: `aaa2fd0c0` renamed the import to
+`earthsciio::DataSource`, a type the published crate did not have either.
+
+**Fixed 2026-08-20.** The name is settled as `DataSource` (and `SourceTemporal`)
+in EarthSciIO `7a2788f`, shipped as 0.1.2 with the 0.1.1 spellings kept as
+deprecated aliases so a consumer is not stranded mid-upgrade. `run-rs/Cargo.toml`
+carries a `[patch.crates-io]` onto the sibling checkout, because `earthsci-ast`
+resolves EarthSciIO from crates.io and the shim reads the same types the bridge
+does — they must be one crate, not a registry copy plus a path copy.
+
 **Effect here:** the repo's headline three-binding claim could not be reproduced
 for one of the three, and Rust had never executed the plume-rise document — which
-is also why §2.1 went undetected until it did.
+is also why §2.1 went undetected until it did, and why §4.3 below survived the
+whole 1.0.0 migration.
+
+### 4.3 The esio bridge read 0.x source variables, so it built no providers
+**EarthSciAST (Rust binding).** Fixed.
+
+`providers_from_document` looked up `data_sources[l].variables` — the map esm
+1.0.0 deleted, replacing it with `update: {kind: "data", source, from}` on the
+CONSUMING parameter. Against the migrated `isrm.esm` it matched nothing and
+returned an empty provider list.
+
+The failure surfaced nowhere near the cause: `prepare` went on to evaluate the
+graph with no data, an aggregate ranged over a zero-length axis, and the run
+died inside `col_major_to_arrayd` with `ShapeError/IncompatibleShape`. It named
+neither the source, nor the observed, nor the shape.
+
+It survived the migration because §4.2 meant the file had not compiled since the
+rename, and EarthSciAST's CI never builds `--features esio` (it cannot: the
+feature resolves EarthSciIO from a sibling checkout that does not exist on a
+runner). The 1.0.0 fixture and the Python twin test had both moved; the Rust
+test still poked `data_sources[X].variables[...]`, so it could not have caught
+this even if it had run.
+
+**Fixed 2026-08-20** in EarthSciAST `d1ceb5bdb`, which also ports the 16 ingest
+tests to 1.0.0, resolves `record_filter.require_finite` in the reader's file-
+variable vocabulary, and makes the `col_major_to_arrayd` panic name the shape,
+its product and the element count.
 
 ---
 
@@ -367,8 +406,20 @@ descriptions now say why, where four used to say the opposite.
 
 ## 6. Still open
 
-* ~~**`temporal` is ignored** by `providers_from_document`~~ — **FIXED
-  2026-08-20** (EarthSciAST `ca10f1214`), together with §4.0.
+* **`temporal` is ignored** by `providers_from_document` — **fixed in Python
+  2026-08-20** (EarthSciAST `ca10f1214`), together with §4.0; **still open in
+  Rust**, which sets no cadence on a `DataSource` anywhere and so reads every
+  source as CONST. Harmless for this document (its five sources are all static)
+  and load-bearing for anything hourly: with §4.0's ladder, an absent `temporal`
+  now means *immutable*, so a dropped cadence pins stale bytes rather than
+  merely refetching too often. Rust needs an ISO-8601 duration/instant converter
+  to `earthsciio::SourceTemporal`, which does not exist yet.
+* **EarthSciAST's CI never builds `--features esio`** — the feature resolves
+  EarthSciIO from a sibling checkout that is not on a runner, so the whole
+  provider bridge is compiled by nothing but a human running `isrm.esm`. That is
+  how §4.2 and §4.3 each survived for months. Now that EarthSciIO publishes the
+  names the bridge imports (0.1.2), a CI job could build the feature against the
+  registry instead.
 * **`source.mirrors` are dropped** — declared failover URLs never reach the loader.
 * **`determinism` is read by nothing**, in either repo, despite `esm-spec.md`
   §8.9 being a normative MUST.
