@@ -122,25 +122,25 @@ def metaparam(doc: dict, name: str) -> int:
 
 
 def record_loaders(doc: dict) -> list[str]:
-    """The loaders that DISCOVER their own extent (``extent.metaparameter``) —
+    """The data sources that DISCOVER their own extent (``extent.metaparameter``) —
     the record-bearing tables of the document, whatever they happen to be
     called. The two knobs below are scale/locality concerns of a RUN, not of
     the model, and both are expressed in the document's own vocabulary."""
     return [
         name
-        for name, ld in (doc.get("data_loaders") or {}).items()
+        for name, ld in (doc.get("data_sources") or {}).items()
         if isinstance(ld, dict) and isinstance(ld.get("extent"), dict)
         and ld["extent"].get("metaparameter")
     ]
 
 
 def gated_loader_arrays(doc: dict) -> dict:
-    """The loaders that declare a ``gated_select``, and the arrays each gates -
+    """The sources that declare a ``gated_select``, and the arrays each gates -
     the document's own statement of how many model arrays the pushdown rewrite
     must end up gating. Derived rather than written down, so splitting or
-    merging a gated loader keeps the check honest."""
+    merging a gated source keeps the check honest."""
     out: dict[str, list[str]] = {}
-    for name, ld in (doc.get("data_loaders") or {}).items():
+    for name, ld in (doc.get("data_sources") or {}).items():
         gs = ((ld or {}).get("metadata") or {}).get("x_esd", {}).get("gated_select")
         if isinstance(gs, dict):
             out[name] = [str(a) for a in gs.get("applies_to", [])]
@@ -154,7 +154,7 @@ def truncate_records(doc: dict, n: int) -> None:
     the same records the previous runners' post-filter ``[:n]`` did — and
     ``extent`` then re-discovers the smaller N_REC by itself."""
     for name in record_loaders(doc):
-        doc["data_loaders"][name]["select"] = {"axes": [{"range": {"start": 0, "stop": n}}]}
+        doc["data_sources"][name]["select"] = {"axes": [{"range": {"start": 0, "stop": n}}]}
 
 
 # zarr workaround (unchanged from the validated runners): the SR arrays carry NO
@@ -177,7 +177,7 @@ def main() -> int:
     reduced = firstn is not None
     os.environ.setdefault("ESS_OBSERVED_PROGRESS", "1")  # per-observed hoist logs
 
-    from earthsci_ast.data_loaders.esio_provider import providers_from_document
+    from earthsci_ast.data_sources.esio_provider import providers_from_document
     from earthsci_ast.prepare import observed_field, prepare
     from earthsci_ast.simulation_array import BuildInspection
 
@@ -210,7 +210,7 @@ def main() -> int:
     for lname, arrs in gated_loader_arrays(doc).items():
         seed_empty_zattrs(
             os.path.join(paths.ESIO_CACHE, lname),
-            doc["data_loaders"][lname]["source"]["url_template"],
+            doc["data_sources"][lname]["source"]["url_template"],
             arrs,
         )
     # A local copy of a record loader's source is a LOCALITY choice of this run

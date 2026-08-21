@@ -205,7 +205,7 @@ and falsely rejected a shared *valid* fixture; Julia never called
 
 ## 4. Defects that cost only performance
 
-### 4.0 Every warm cache hit pays a network round-trip
+### 4.0 Every warm cache hit pays a network round-trip — FIXED
 
 **`EarthSciIO/earthsciio/validate.py`, `decide()`.** The freshness ladder is
 first-wins, and it is ordered:
@@ -241,10 +241,18 @@ The 5-row store (§6) reads 11.4x fewer bytes and still ran 28% slower, because
 3x more chunks means 3x more round-trips; bytes were never the bottleneck.
 With this fixed, the smaller chunking should win on both axes.
 
-**This needs a second fix to be reachable from a document**: `temporal` is
-declared in `.esm` loaders but never passed to `DataLoader` by
-`providers_from_document` (§6), so no document can currently say `immutable`
-at all. Both halves are needed.
+**It needed a second fix to be safe**: `temporal` was declared in `.esm` sources
+but never passed to `DataLoader` by `providers_from_document`, so no document
+could say `immutable` at all — and worse, once an absent `temporal` means
+immutable, a dropped cadence stops being ignored and starts pinning stale bytes
+permanently. The two had to ship together, and did.
+
+**Both fixed 2026-08-20**: EarthSciIO `fec6875` reorders the ladder (spec §4,
+Python and Rust in lockstep, regression guards in both languages); EarthSciAST
+`ca10f1214` passes `temporal` through, and teaches `_to_esio_temporal` to read
+the raw-JSON mapping shape `providers_from_document` actually holds — reading
+only attributes had made a declared cadence degrade to CONST indistinguishably
+from a legitimate "no anchor".
 
 
 
@@ -358,11 +366,8 @@ descriptions now say why, where four used to say the opposite.
 
 ## 6. Still open
 
-* **`temporal` is ignored** by `providers_from_document`: a loader declaring an
-  hourly cadence is served CONST — reads the first file once, forever, no warning.
-  It is also half of §4.0: with no `temporal` reaching the loader, no document
-  can declare a store immutable, so every cached chunk revalidates over the
-  network forever.
+* ~~**`temporal` is ignored** by `providers_from_document`~~ — **FIXED
+  2026-08-20** (EarthSciAST `ca10f1214`), together with §4.0.
 * **`source.mirrors` are dropped** — declared failover URLs never reach the loader.
 * **`determinism` is read by nothing**, in either repo, despite `esm-spec.md`
   §8.9 being a normative MUST.

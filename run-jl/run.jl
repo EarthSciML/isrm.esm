@@ -42,27 +42,26 @@ include(joinpath(@__DIR__, "..", "contract", "results.jl"))
 const T0 = time()
 # The InMAP source-receptor tutorial's published national totals
 # (https://inmap.run/blog/2019/04/20/sr/), which account for plume rise.
-# A TARGET, not an assertion: the document deliberately does not reproduce
-# InMAP's high-plume source-index defect (a plume above model layer 7 keeps an
-# index built in the coarse 9324-cell grid, then read against the 52411-cell
-# ground grid), which misplaces 654 of 43650 records — 0.43% of emitted mass —
-# onto the wrong source cell. So a run lands NEAR rather than ON these, and the
-# deviation is printed rather than failed.
+# A REFERENCE POINT, not a target: the document declines BOTH of InMAP's
+# plume-rise defects — the high-plume source-index defect (a plume above model
+# layer 7 keeps an index built in the coarse 9324-cell grid, then read against
+# the 52411-cell ground grid, misplacing 654 of 43650 records) and the inverted
+# layerFracs interpolation (6.25% of emitted mass on the wrong side of a
+# split). So a run lands ABOVE these by about 1.35%, deliberately. What is
+# checked is CORRECTED_K / CORRECTED_L below.
 const ORACLE_K = 6928.959583
 const ORACLE_L = 15623.924632
-# Beyond this the deviation is more than the clean-physics choice can explain.
-# MEASURED at full scale on 2026-08-19: deathsK 6983.9385617781645 (+0.79%) and
-# deathsL 15752.315804140908 (+0.82%) against the published totals. The
-# misplaced group is 0.43% of emitted mass but buys about twice that in deaths,
-# because putting it back on the cells the emissions came from puts it back
-# over people. This threshold sits just above what was measured.
-# STALE, and left in place only as a loose upper bound: it was fitted to a
-# full-scale run that predates sr.Reader.layerFracs and the [0, 3, 6] fix, and
-# no full-scale run of the current document has been made. At reduced scale the
-# document now reproduces the live inmap cloud service to 9e-9, so the real
-# threshold is expected to be far tighter — see SERVICE_DEATHS in
-# contract/compare_results.py.
-const ORACLE_NOTABLE_REL = 8.3e-3
+# What this document computes at full scale with CORRECT physics — measured
+# 2026-08-20 against the repaired store. Unlike ORACLE_K/L this is not an
+# external oracle but a regression lock on the document's own output; its
+# authority comes from the NumPy oracle agreeing on the weights and from the
+# InMAP-faithful configuration having matched the live service to 8.9e-9 before
+# the physics was corrected.
+const CORRECTED_K = 7022.724781368745
+const CORRECTED_L = 15835.993595627131
+# Cross-binding spread on this document is ~4e-18 relative, so this is loose by
+# many orders of magnitude and catches a real change rather than float noise.
+const CORRECTED_REL = 1e-9
 # Peak resident set. `/proc/self/statm` field 2 is the CURRENT resident page
 # count and is Linux-only; `Sys.maxrss()` is the high-water mark and is portable,
 # so it is the fallback wherever /proc does not exist (macOS).
@@ -74,34 +73,58 @@ extent is written down here)."""
 metaparam(doc, name) = Int(get(get(get(doc, "metaparameters", Dict()), name, Dict()),
                                "default", 0))
 
-"""The loaders that DISCOVER their own extent (`extent.metaparameter`) — the
-record-bearing tables of the document, whatever they happen to be called. The
+"""The data sources that DISCOVER their own extent (`extent.metaparameter`) —
+the record-bearing tables of the document, whatever they happen to be called. The
 two knobs below are scale/locality concerns of a RUN, not of the model, and both
 are expressed in the document's own vocabulary."""
-record_loaders(doc) = String[String(name) for (name, ld) in get(doc, "data_loaders", Dict())
+record_loaders(doc) = String[String(name) for (name, ld) in get(doc, "data_sources", Dict())
                              if ld isa AbstractDict &&
                                 get(ld, "extent", Dict()) isa AbstractDict &&
                                 haskey(get(ld, "extent", Dict()), "metaparameter")]
 
-"""The record count the loaders DISCOVERED — the delivered length of any one of
-an extent-declaring loader's variables. They are aligned by construction (that
-is exactly what `record_filter` guarantees), so the first one answers for all,
-and this file still names no column of any particular model."""
-function discovered_records(doc, insp)
-    for name in record_loaders(doc), v in keys(doc["data_loaders"][name]["variables"])
-        a = get(insp.const_arrays, "$name.$v", nothing)
-        a === nothing || return length(a)
+"""Every model PARAMETER fed by data source `src` — `(model, parameter)` pairs.
+
+From esm 1.0.0 a source declares no variables of its own: the binding lives on
+the consuming parameter as `update: {kind: "data", source: …, from: …}`
+(esm-spec §6.3). So "which columns does this source deliver" is answered by
+walking the models, not the source."""
+function source_parameters(doc, src)
+    out = Tuple{String,String}[]
+    for (mname, m) in get(doc, "models", Dict())
+        m isa AbstractDict || continue
+        for (vname, v) in get(m, "variables", Dict())
+            v isa AbstractDict || continue
+            up = get(v, "update", nothing); up isa AbstractDict || continue
+            get(up, "kind", "") == "data" && get(up, "source", "") == src &&
+                push!(out, (String(mname), String(vname)))
+        end
     end
-    error("no record-discovering loader delivered an array to size N_REC from")
+    return out
 end
 
-"""The loaders that declare a `gated_select`, and the arrays each gates — the
+"""The record count the sources DISCOVERED — the delivered length of any one
+parameter an extent-declaring source feeds. They are aligned by construction
+(that is exactly what `record_filter` guarantees), so the first one answers for
+all, and this file still names no column of any particular model."""
+function discovered_records(doc, insp)
+    for name in record_loaders(doc), (mname, vname) in source_parameters(doc, name)
+        # 1.0.0 keys the delivered column by the CONSUMING parameter, so try the
+        # flattened name and the bare one rather than the old "source.var".
+        for key in ("$mname.$vname", vname)
+            a = get(insp.const_arrays, key, nothing)
+            a === nothing || return length(a)
+        end
+    end
+    error("no record-discovering source delivered an array to size N_REC from")
+end
+
+"""The sources that declare a `gated_select`, and the arrays each gates — the
 document's own statement of how many model arrays the pushdown rewrite must end
 up gating. Derived rather than written down, so splitting or merging a gated
-loader keeps the check honest."""
+source keeps the check honest."""
 function gated_loader_arrays(doc)
     out = Dict{String,Vector{String}}()
-    for (name, ld) in get(doc, "data_loaders", Dict())
+    for (name, ld) in get(doc, "data_sources", Dict())
         ld isa AbstractDict || continue
         md = get(ld, "metadata", Dict()); md isa AbstractDict || continue
         xe = get(md, "x_esd", Dict()); xe isa AbstractDict || continue
@@ -111,14 +134,14 @@ function gated_loader_arrays(doc)
     return out
 end
 
-"""REDUCED runs: truncate every record-discovering loader to its first `n`
-DELIVERED records with a loader-level `select` range (esm-spec §8.9.2). Because
-the selection follows the loader's own `record_filter`, this picks the same
+"""REDUCED runs: truncate every record-discovering source to its first `n`
+DELIVERED records with a source-level `select` range (esm-spec §8.9.2). Because
+the selection follows the source's own `record_filter`, this picks the same
 records the previous runners' post-filter truncation did — and `extent` then
 re-discovers the smaller N_REC by itself."""
 function truncate_records!(doc, n)
     for name in record_loaders(doc)
-        doc["data_loaders"][name]["select"] =
+        doc["data_sources"][name]["select"] =
             Dict("axes" => [Dict("range" => Dict("start" => 0, "stop" => n))])
     end
     return doc
@@ -164,7 +187,7 @@ function main()
     gated = gated_loader_arrays(doc_raw)
     for (lname, arrs) in gated
         seed_empty_zattrs(joinpath(cache_root, lname),
-                          doc_raw["data_loaders"][lname]["source"]["url_template"], arrs)
+                          doc_raw["data_sources"][lname]["source"]["url_template"], arrs)
     end
     println("building providers from the document ...")
     # A local copy of a record loader's source is a LOCALITY choice of this run
@@ -292,17 +315,23 @@ function main()
     println("  sum(deathsL) = ", sL)
     println("  Σ TotalPM25  = ", sum(tp))
     if !reduced
-        rK = (sK - ORACLE_K) / ORACLE_K
-        rL = (sL - ORACLE_L) / ORACLE_L
         println("  tutorial deathsK=$ORACLE_K  deviation ",
-                round(100 * rK, digits=6), "%")
+                round(100 * (sK - ORACLE_K) / ORACLE_K, digits=6),
+                "%  (reference, not a target)")
         println("  tutorial deathsL=$ORACLE_L deviation ",
-                round(100 * rL, digits=6), "%")
-        (abs(rK) > ORACLE_NOTABLE_REL || abs(rL) > ORACLE_NOTABLE_REL) && println(
-            "  WARNING: deviation exceeds ", round(100 * ORACLE_NOTABLE_REL, digits=2),
-            "% — more than the above-layer-7 group has been measured to be worth ",
-            "(0.43% of emitted mass, +0.79%/+0.82% of deaths at full scale), so ",
-            "something else differs.")
+                round(100 * (sL - ORACLE_L) / ORACLE_L, digits=6),
+                "%  (reference, not a target)")
+        rK = (sK - CORRECTED_K) / CORRECTED_K
+        rL = (sL - CORRECTED_L) / CORRECTED_L
+        if abs(rK) > CORRECTED_REL || abs(rL) > CORRECTED_REL
+            println("  WARNING: $sK / $sL differs from the measured ",
+                    "corrected-physics totals $CORRECTED_K / $CORRECTED_L by more ",
+                    "than $CORRECTED_REL relative. That is a REGRESSION, not a ",
+                    "tolerance: the two are the same document on the same store.")
+        else
+            println("  matches the measured corrected-physics totals to ",
+                    abs(rK), " / ", abs(rL))
+        end
     end
     println("  lower-SR-layer histogram (records per layer 0/1/2) = ",
             plume["sr_lower"]["histogram"])

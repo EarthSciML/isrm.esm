@@ -29,15 +29,15 @@ The document is fully automatic — nothing model-shaped lives in the runners:
   ~330 GB SR matrix are fetched.
 * **Document-declared data sources.** Every provider — the SR zarr, grid,
   population, mortality, and the EGU FF10 inventory — comes from the
-  document's `data_loaders` via `providers_from_document` (format =
+  document's `data_sources` via `providers_from_document` (format =
   `metadata.esio_format`, URL = `source.url_template`).
 * **Document-declared ingest** (esm-spec §8.9; the Rust binding today, see the
-  binding note below). The EGU loader carries its own `reader_options` (the
+  binding note below). The EGU source carries its own `reader_options` (the
   `*egu*` member glob and the EPA column-header row), a `codes` map turning the
   POLID text column into the pathway enum, a `record_filter` that drops a
   record with no coordinate or no annual total, and an `extent` that binds the
   surviving count to `N_REC`. The source-cell rectangles are a `select` range —
-  `W[0:N_SRC]` on their own loader variables — rather than a prefix the caller
+  `W[0:N_SRC]` on the consuming parameters' own `update.from` — rather than a prefix the caller
   slices. The FF10 table is read, mapped, filtered, counted and (for a reduced
   run) truncated **by the engine**, from the declaration: `run-rs` names no
   pollutant, no column, no grid extent and no record count.
@@ -215,7 +215,7 @@ this store that cannot be trusted.
 > **An earlier full-scale total published here (`6983.9385617781645`, +0.79%)
 > was VOID** and its apparent agreement was a coincidence. It came from an
 > engine that contracted three of the five pathways against the wrong SR
-> emission layer: three sibling SR loaders each expose `SOA`, `pNO3`, …, and
+> emission layer: three sibling SR sources each feed `SOA`, `pNO3`, …, and
 > the Julia and Python gated-fetch hook published every fetched slab under an
 > alias resolved by matching the *tail* of a dotted name, so all three
 > providers claimed all three keys and the last writer in hash order won. Rust
@@ -566,14 +566,14 @@ Written 2026-08-19, revised 2026-08-20, and worth checking before trusting it.
   dropped `stack_layer` with *"join 'overlap' envelope factor 'src_W' is not
   bound as build-time const-array data"*, and every downstream observed went
   unresolved with it. It was neither a document error nor a missing array: the
-  rects are bound TWICE, under `ISRM_Grid.src_W` (the loader's variable) and
+  rects are bound TWICE, under `ISRM_Grid.src_W` (the source binding) and
   `ISRM.src_W` (the model parameter coupled from it), and they are ONE array by
   reference. The interpreter's suffix resolver treated two keys as an ambiguity
   and reported a factor bound twice as "not bound". Only the pushdown rewrite's
   MIRROR arm — the per-record binning aggregates, `stack_layer` and its chain —
   takes that path, because it keeps the document's own full-grid rects instead
   of the compact `pd_cell__*` gathers the forward arm gets. The trigger was this
-  document declaring its own `select` on sibling loaders, which is what created
+  document declaring its own `select` on sibling sources, which is what created
   the second key. Fixed in `numpy_interpreter._scoped_array_name`.
 * **The document's unit strings were outside the ESM unit table — FIXED
   2026-08-19, in the document AND in the registry.** Three separate things:

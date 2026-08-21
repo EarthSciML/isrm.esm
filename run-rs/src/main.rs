@@ -116,7 +116,7 @@ fn metaparam(doc: &Value, name: &str) -> usize {
 /// The two knobs below are scale/locality concerns of a RUN, not of the model,
 /// and both are expressed in the document's own vocabulary.
 fn record_loaders(doc: &Value) -> Vec<String> {
-    doc["data_loaders"]
+    doc["data_sources"]
         .as_object()
         .map(|dls| {
             dls.iter()
@@ -127,13 +127,13 @@ fn record_loaders(doc: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// How many (loader array, gate) pairs the DOCUMENT declares — the number of
+/// How many (source array, gate) pairs the DOCUMENT declares — the number of
 /// model arrays the pushdown rewrite must end up gating, summed over the
-/// loaders that declare a `gated_select`. Derived from the document rather
-/// than written down, so splitting or merging a gated loader keeps the check
+/// sources that declare a `gated_select`. Derived from the document rather
+/// than written down, so splitting or merging a gated source keeps the check
 /// honest.
 fn declared_gated_arrays(doc: &Value) -> usize {
-    doc["data_loaders"]
+    doc["data_sources"]
         .as_object()
         .map(|dls| {
             dls.values()
@@ -145,14 +145,14 @@ fn declared_gated_arrays(doc: &Value) -> usize {
         .unwrap_or(0)
 }
 
-/// REDUCED runs: truncate every record-discovering loader to its first `n`
-/// DELIVERED records with a loader-level `select` range (esm-spec §8.9.2).
-/// Because the selection follows the loader's own `record_filter`, this picks
+/// REDUCED runs: truncate every record-discovering source to its first `n`
+/// DELIVERED records with a source-level `select` range (esm-spec §8.9.2).
+/// Because the selection follows the source's own `record_filter`, this picks
 /// the same records the previous runners' post-filter `truncate(n)` did — and
 /// `extent` then re-discovers the smaller N_REC by itself.
 fn truncate_records(doc: &mut Value, n: usize) {
     for name in record_loaders(doc) {
-        doc["data_loaders"][&name]["select"] =
+        doc["data_sources"][&name]["select"] =
             json!({"axes": [{"range": {"start": 0, "stop": n}}]});
     }
 }

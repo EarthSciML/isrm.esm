@@ -1,5 +1,5 @@
 {
- "esm": "0.8.0",
+ "esm": "1.0.0",
  "metadata": {
   "name": "ISRM_clean",
   "description": "FULLY-AUTOMATIC clean full-domain InMAP ISRM, over the repaired and rechunked isrm_v1.2.2.zarr. Full-domain SR[src_cells, rcv_cells] per pathway AND per SR emission layer, E as the emission->(cell, layer) binning +-aggregate, X/Y as an in-model Lambert-conformal PROJECTION observed over raw emis_lon/emis_lat (the inline trig IS the lambert_conformal_forward_x/y expansion), projected at BUILD time by the general-eval coordinate path. PLUME RISE IS STATED HERE, NOT IN A RUNNER: fifteen observeds carry ctessum/atmos ASMEPrecomputed plus a CORRECTED sr.Reader.layerFracs over the zarr's own per-cell meteorology, and SPLIT each record's mass across the three SR emission layers before the contraction - w_sr0/w_sr1/w_sr2, summing to 1, interpolated on cell-CENTRE heights between the model layers [0, 3, 6] the SR calculation was performed for. NO hand-authored pushdown constructs (no derived set / producer / member_factor) and NO caller-supplied projected coordinates. Builds with pushdown_rewrite=true: the auto-rewrite generates the support set + distinct producer + member_factor + gated_select, and the three gated SR providers are fetched pre-sliced to the invented source cells.",
@@ -140,7 +140,7 @@
    "size": "N_REC"
   }
  },
- "data_loaders": {
+ "data_sources": {
   "ISRM_Grid": {
    "kind": "static",
    "source": {
@@ -295,143 +295,6 @@
      "cell_layout": "One value per cell of the FULL InMAP grid, laid out LAYER-MAJOR over the model's 27 layers: 8 ground-grid layers of 52411 cells each, then 19 coarse layers of 9324, and 8*52411 + 19*9324 = 596444 = N_ALL. Model layers 0..7 share a byte-identical horizontal grid, so the cell directly above source cell `c` in layer `l` is the flat index `l*N_SRC + c` \u2014 which is how the plume-rise observeds read the meteorology at a stack's own layer without any 2-D view.",
      "note": "`format` and the pinned .zarray params are not expressible in the 0.8.0 source schema (G1); the runner sets format at provider creation. Everything here is a single-chunk 1-D array (~4.8 MB each) read in full \u2014 value invention's rectangle filter reads the whole grid, and the meteorology gather reaches any of the 27 layers. The SOURCE-cell prefix [0:N_SRC] of W/S/E/N is DECLARED as the src_W/src_S/src_E/src_N variables' `select` range rather than sliced by the caller (esm-spec 8.9.2). This loader has NO gated_select: nothing here is big enough to gate, and keeping it off the SR loaders is what lets each of those gate its own emission layer."
     }
-   },
-   "variables": {
-    "W": {
-     "file_variable": "W",
-     "units": "m",
-     "description": "Cell west edge (LCC metres); length 596444, first 52411 build the cell rectangles."
-    },
-    "S": {
-     "file_variable": "S",
-     "units": "m",
-     "description": "Cell south edge (LCC metres); length 596444, first 52411 used."
-    },
-    "E": {
-     "file_variable": "E",
-     "units": "m",
-     "description": "Cell east edge (LCC metres); length 596444, first 52411 used."
-    },
-    "N": {
-     "file_variable": "N",
-     "units": "m",
-     "description": "Cell north edge (LCC metres); length 596444, first 52411 used."
-    },
-    "TotalPop": {
-     "file_variable": "TotalPop",
-     "units": "1",
-     "description": "Population per cell; length 596444, prefix [0:52411] used in the deaths formula."
-    },
-    "MortalityRate": {
-     "file_variable": "MortalityRate",
-     "units": "1",
-     "description": "Baseline all-cause mortality per 100,000; length 596444, prefix [0:52411] used."
-    },
-    "src_W": {
-     "file_variable": "W",
-     "units": "m",
-     "select": {
-      "axes": [
-       {
-        "range": {
-         "start": 0,
-         "stop": "N_SRC"
-        }
-       }
-      ]
-     },
-     "description": "Cell west edge over the SOURCE cells: the SAME on-disk array as `W`, delivered as its [0:N_SRC] prefix. Declared, so no caller samples the grid a second time to slice it (esm-spec 8.9.2)."
-    },
-    "src_S": {
-     "file_variable": "S",
-     "units": "m",
-     "select": {
-      "axes": [
-       {
-        "range": {
-         "start": 0,
-         "stop": "N_SRC"
-        }
-       }
-      ]
-     },
-     "description": "Cell south edge over the SOURCE cells: the SAME on-disk array as `S`, delivered as its [0:N_SRC] prefix. Declared, so no caller samples the grid a second time to slice it (esm-spec 8.9.2)."
-    },
-    "src_E": {
-     "file_variable": "E",
-     "units": "m",
-     "select": {
-      "axes": [
-       {
-        "range": {
-         "start": 0,
-         "stop": "N_SRC"
-        }
-       }
-      ]
-     },
-     "description": "Cell east edge over the SOURCE cells: the SAME on-disk array as `E`, delivered as its [0:N_SRC] prefix. Declared, so no caller samples the grid a second time to slice it (esm-spec 8.9.2)."
-    },
-    "src_N": {
-     "file_variable": "N",
-     "units": "m",
-     "select": {
-      "axes": [
-       {
-        "range": {
-         "start": 0,
-         "stop": "N_SRC"
-        }
-       }
-      ]
-     },
-     "description": "Cell north edge over the SOURCE cells: the SAME on-disk array as `N`, delivered as its [0:N_SRC] prefix. Declared, so no caller samples the grid a second time to slice it (esm-spec 8.9.2)."
-    },
-    "Temperature": {
-     "file_variable": "Temperature",
-     "units": "K",
-     "description": "Air temperature in each cell. Length 596444 (N_ALL), layer-major over all 27 model layers; read in full because plume rise gathers it at whichever layer a stack top sits in."
-    },
-    "WindSpeed": {
-     "file_variable": "WindSpeed",
-     "units": "m/s",
-     "description": "Wind speed in each cell. Length 596444 (N_ALL), layer-major over all 27 model layers; read in full because plume rise gathers it at whichever layer a stack top sits in."
-    },
-    "WindSpeedInverse": {
-     "file_variable": "WindSpeedInverse",
-     "units": "s/m",
-     "description": "Cell mean of 1/u, the average InMAP takes over the wind rose rather than the reciprocal of the mean speed. Length 596444 (N_ALL), layer-major over all 27 model layers; read in full because plume rise gathers it at whichever layer a stack top sits in."
-    },
-    "WindSpeedMinusThird": {
-     "file_variable": "WindSpeedMinusThird",
-     "units": "(m/s)^(-1/3)",
-     "description": "Cell mean of u^(-1/3). Length 596444 (N_ALL), layer-major over all 27 model layers; read in full because plume rise gathers it at whichever layer a stack top sits in."
-    },
-    "WindSpeedMinusOnePointFour": {
-     "file_variable": "WindSpeedMinusOnePointFour",
-     "units": "(m/s)^-1.4",
-     "description": "Cell mean of u^(-1.4). Length 596444 (N_ALL), layer-major over all 27 model layers; read in full because plume rise gathers it at whichever layer a stack top sits in."
-    },
-    "S1": {
-     "file_variable": "S1",
-     "units": "1/s^2",
-     "description": "Stability parameter S1 = (g/theta) dtheta/dz, the buoyancy frequency squared that scales the stable-plume rise. Length 596444 (N_ALL), layer-major over all 27 model layers; read in full because plume rise gathers it at whichever layer a stack top sits in."
-    },
-    "SClass": {
-     "file_variable": "SClass",
-     "units": "1",
-     "description": "Stability class indicator: > 0.5 marks a stably stratified cell. Length 596444 (N_ALL), layer-major over all 27 model layers; read in full because plume rise gathers it at whichever layer a stack top sits in."
-    },
-    "LayerHeight": {
-     "file_variable": "LayerHeight",
-     "units": "m",
-     "description": "Staggered layer-BOTTOM height: LayerHeight[l, c] is the height of the bottom of model layer l over cell c, and layer 0's is 0. This is the column InMAP's findLayer searches. Length 596444 (N_ALL), layer-major over all 27 model layers; read in full because plume rise gathers it at whichever layer a stack top sits in."
-    },
-    "Dz": {
-     "file_variable": "Dz",
-     "units": "m",
-     "description": "Layer THICKNESS: Dz[l, c] is the vertical extent of model layer l over cell c, so LayerHeight[l, c] + Dz[l, c]/2 is that layer's CENTRE height \u2014 which is the column InMAP's sr.Reader.layerFracs interpolates on (sr.d.VerticalProfile fills height[i] = c.LayerHeight + c.Dz/2). Length 596444 (N_ALL), layer-major over all 27 model layers; read in full because plume rise gathers it at whichever layer a stack top sits in. It keeps its zarr attributes, unlike `layers` \u2014 see the SR_MODEL_L1 metaparameter."
-    }
    }
   },
   "ISRM_SR_L0": {
@@ -552,33 +415,6 @@
       ]
      },
      "note": "Per-axis selection over the native SR dims [emisLayer, source, receptor] = [3, 52411, 52411]. `{\"fixed\":[0]}` takes emission layer 0 and DROPS the axis; `{\"gated_by\":\"emis_src_cells\"}` takes the DERIVED support set the pushdown rewrite invents, in its canonical member order; `\"all\"` keeps the receptor axis. The three sibling loaders ISRM_SR_L0/L1/L2 differ in NOTHING but that fixed index, which is what makes each SR model parameter rank-2 [src_cells, rcv_cells] with the gated axis at non-fixed position 0 \u2014 the shape the rewrite's detector and the gate consumer both require. A single rank-3 SR array would satisfy neither. The engine defers this provider until value invention has materialised the gating set, then delivers each `applies_to` array pre-sliced to the compact [emis_src_cells, rcv_cells] slab, so none of the ~330 GB matrix is folded (G2)."
-    }
-   },
-   "variables": {
-    "SOA": {
-     "file_variable": "SOA",
-     "units": "ug/m^3/(kg/yr)",
-     "description": "SR secondary organic aerosol response for emissions in layer 0 (contracted with the VOC mass whose plume reaches that layer). Native dims [emis_layer, src_cells, rcv_cells] (dtype <f4, chunks [1,100,52411]); the loader's gated_select fixes emis_layer to 0 and gates the source axis, so the model sees the compact [emis_src_cells, rcv_cells] slab."
-    },
-    "pNO3": {
-     "file_variable": "pNO3",
-     "units": "ug/m^3/(kg/yr)",
-     "description": "SR particulate nitrate response for emissions in layer 0 (contracted with the NOx mass whose plume reaches that layer). Native dims [emis_layer, src_cells, rcv_cells] (dtype <f4, chunks [1,100,52411]); the loader's gated_select fixes emis_layer to 0 and gates the source axis, so the model sees the compact [emis_src_cells, rcv_cells] slab."
-    },
-    "pNH4": {
-     "file_variable": "pNH4",
-     "units": "ug/m^3/(kg/yr)",
-     "description": "SR particulate ammonium response for emissions in layer 0 (contracted with the NH3 mass whose plume reaches that layer). Native dims [emis_layer, src_cells, rcv_cells] (dtype <f4, chunks [1,100,52411]); the loader's gated_select fixes emis_layer to 0 and gates the source axis, so the model sees the compact [emis_src_cells, rcv_cells] slab."
-    },
-    "pSO4": {
-     "file_variable": "pSO4",
-     "units": "ug/m^3/(kg/yr)",
-     "description": "SR particulate sulfate response for emissions in layer 0 (contracted with the SOx mass whose plume reaches that layer). Native dims [emis_layer, src_cells, rcv_cells] (dtype <f4, chunks [1,100,52411]); the loader's gated_select fixes emis_layer to 0 and gates the source axis, so the model sees the compact [emis_src_cells, rcv_cells] slab."
-    },
-    "PrimaryPM25": {
-     "file_variable": "PrimaryPM25",
-     "units": "ug/m^3/(kg/yr)",
-     "description": "SR primary PM2.5 response for emissions in layer 0 (contracted with the PM2.5 mass whose plume reaches that layer). Native dims [emis_layer, src_cells, rcv_cells] (dtype <f4, chunks [1,100,52411]); the loader's gated_select fixes emis_layer to 0 and gates the source axis, so the model sees the compact [emis_src_cells, rcv_cells] slab."
     }
    }
   },
@@ -701,33 +537,6 @@
      },
      "note": "Per-axis selection over the native SR dims [emisLayer, source, receptor] = [3, 52411, 52411]. `{\"fixed\":[1]}` takes emission layer 1 and DROPS the axis; `{\"gated_by\":\"emis_src_cells\"}` takes the DERIVED support set the pushdown rewrite invents, in its canonical member order; `\"all\"` keeps the receptor axis. The three sibling loaders ISRM_SR_L0/L1/L2 differ in NOTHING but that fixed index, which is what makes each SR model parameter rank-2 [src_cells, rcv_cells] with the gated axis at non-fixed position 0 \u2014 the shape the rewrite's detector and the gate consumer both require. A single rank-3 SR array would satisfy neither. The engine defers this provider until value invention has materialised the gating set, then delivers each `applies_to` array pre-sliced to the compact [emis_src_cells, rcv_cells] slab, so none of the ~330 GB matrix is folded (G2)."
     }
-   },
-   "variables": {
-    "SOA": {
-     "file_variable": "SOA",
-     "units": "ug/m^3/(kg/yr)",
-     "description": "SR secondary organic aerosol response for emissions in layer 1 (contracted with the VOC mass whose plume reaches that layer). Native dims [emis_layer, src_cells, rcv_cells] (dtype <f4, chunks [1,100,52411]); the loader's gated_select fixes emis_layer to 1 and gates the source axis, so the model sees the compact [emis_src_cells, rcv_cells] slab."
-    },
-    "pNO3": {
-     "file_variable": "pNO3",
-     "units": "ug/m^3/(kg/yr)",
-     "description": "SR particulate nitrate response for emissions in layer 1 (contracted with the NOx mass whose plume reaches that layer). Native dims [emis_layer, src_cells, rcv_cells] (dtype <f4, chunks [1,100,52411]); the loader's gated_select fixes emis_layer to 1 and gates the source axis, so the model sees the compact [emis_src_cells, rcv_cells] slab."
-    },
-    "pNH4": {
-     "file_variable": "pNH4",
-     "units": "ug/m^3/(kg/yr)",
-     "description": "SR particulate ammonium response for emissions in layer 1 (contracted with the NH3 mass whose plume reaches that layer). Native dims [emis_layer, src_cells, rcv_cells] (dtype <f4, chunks [1,100,52411]); the loader's gated_select fixes emis_layer to 1 and gates the source axis, so the model sees the compact [emis_src_cells, rcv_cells] slab."
-    },
-    "pSO4": {
-     "file_variable": "pSO4",
-     "units": "ug/m^3/(kg/yr)",
-     "description": "SR particulate sulfate response for emissions in layer 1 (contracted with the SOx mass whose plume reaches that layer). Native dims [emis_layer, src_cells, rcv_cells] (dtype <f4, chunks [1,100,52411]); the loader's gated_select fixes emis_layer to 1 and gates the source axis, so the model sees the compact [emis_src_cells, rcv_cells] slab."
-    },
-    "PrimaryPM25": {
-     "file_variable": "PrimaryPM25",
-     "units": "ug/m^3/(kg/yr)",
-     "description": "SR primary PM2.5 response for emissions in layer 1 (contracted with the PM2.5 mass whose plume reaches that layer). Native dims [emis_layer, src_cells, rcv_cells] (dtype <f4, chunks [1,100,52411]); the loader's gated_select fixes emis_layer to 1 and gates the source axis, so the model sees the compact [emis_src_cells, rcv_cells] slab."
-    }
    }
   },
   "ISRM_SR_L2": {
@@ -849,33 +658,6 @@
      },
      "note": "Per-axis selection over the native SR dims [emisLayer, source, receptor] = [3, 52411, 52411]. `{\"fixed\":[2]}` takes emission layer 2 and DROPS the axis; `{\"gated_by\":\"emis_src_cells\"}` takes the DERIVED support set the pushdown rewrite invents, in its canonical member order; `\"all\"` keeps the receptor axis. The three sibling loaders ISRM_SR_L0/L1/L2 differ in NOTHING but that fixed index, which is what makes each SR model parameter rank-2 [src_cells, rcv_cells] with the gated axis at non-fixed position 0 \u2014 the shape the rewrite's detector and the gate consumer both require. A single rank-3 SR array would satisfy neither. The engine defers this provider until value invention has materialised the gating set, then delivers each `applies_to` array pre-sliced to the compact [emis_src_cells, rcv_cells] slab, so none of the ~330 GB matrix is folded (G2)."
     }
-   },
-   "variables": {
-    "SOA": {
-     "file_variable": "SOA",
-     "units": "ug/m^3/(kg/yr)",
-     "description": "SR secondary organic aerosol response for emissions in layer 2 (contracted with the VOC mass whose plume reaches that layer). Native dims [emis_layer, src_cells, rcv_cells] (dtype <f4, chunks [1,100,52411]); the loader's gated_select fixes emis_layer to 2 and gates the source axis, so the model sees the compact [emis_src_cells, rcv_cells] slab."
-    },
-    "pNO3": {
-     "file_variable": "pNO3",
-     "units": "ug/m^3/(kg/yr)",
-     "description": "SR particulate nitrate response for emissions in layer 2 (contracted with the NOx mass whose plume reaches that layer). Native dims [emis_layer, src_cells, rcv_cells] (dtype <f4, chunks [1,100,52411]); the loader's gated_select fixes emis_layer to 2 and gates the source axis, so the model sees the compact [emis_src_cells, rcv_cells] slab."
-    },
-    "pNH4": {
-     "file_variable": "pNH4",
-     "units": "ug/m^3/(kg/yr)",
-     "description": "SR particulate ammonium response for emissions in layer 2 (contracted with the NH3 mass whose plume reaches that layer). Native dims [emis_layer, src_cells, rcv_cells] (dtype <f4, chunks [1,100,52411]); the loader's gated_select fixes emis_layer to 2 and gates the source axis, so the model sees the compact [emis_src_cells, rcv_cells] slab."
-    },
-    "pSO4": {
-     "file_variable": "pSO4",
-     "units": "ug/m^3/(kg/yr)",
-     "description": "SR particulate sulfate response for emissions in layer 2 (contracted with the SOx mass whose plume reaches that layer). Native dims [emis_layer, src_cells, rcv_cells] (dtype <f4, chunks [1,100,52411]); the loader's gated_select fixes emis_layer to 2 and gates the source axis, so the model sees the compact [emis_src_cells, rcv_cells] slab."
-    },
-    "PrimaryPM25": {
-     "file_variable": "PrimaryPM25",
-     "units": "ug/m^3/(kg/yr)",
-     "description": "SR primary PM2.5 response for emissions in layer 2 (contracted with the PM2.5 mass whose plume reaches that layer). Native dims [emis_layer, src_cells, rcv_cells] (dtype <f4, chunks [1,100,52411]); the loader's gated_select fixes emis_layer to 2 and gates the source axis, so the model sees the compact [emis_src_cells, rcv_cells] slab."
-    }
    }
   },
   "EGU_Emis": {
@@ -982,120 +764,13 @@
    },
    "record_filter": {
     "require_finite": [
-     "lon",
-     "lat",
-     "annual"
+     "LONGITUDE",
+     "LATITUDE",
+     "ANN_VALUE"
     ]
    },
    "extent": {
     "metaparameter": "N_REC"
-   },
-   "variables": {
-    "pollutant": {
-     "file_variable": "POLID",
-     "units": "1",
-     "codes": {
-      "map": {
-       "VOC": 1,
-       "VOC_INV": 2,
-       "XYL": 3,
-       "TOL": 4,
-       "TERP": 5,
-       "PAR": 6,
-       "OLE": 7,
-       "NVOL": 8,
-       "MEOH": 9,
-       "ISOP": 10,
-       "IOLE": 11,
-       "FORM": 12,
-       "ETOH": 13,
-       "ETHA": 14,
-       "ETH": 15,
-       "ALD2": 16,
-       "ALDX": 17,
-       "CB05_ALD2": 18,
-       "CB05_ALDX": 19,
-       "CB05_BENZENE": 20,
-       "CB05_ETH": 21,
-       "CB05_ETHA": 22,
-       "CB05_ETOH": 23,
-       "CB05_FORM": 24,
-       "CB05_IOLE": 25,
-       "CB05_ISOP": 26,
-       "CB05_MEOH": 27,
-       "CB05_OLE": 28,
-       "CB05_PAR": 29,
-       "CB05_TERP": 30,
-       "CB05_TOL": 31,
-       "CB05_XYL": 32,
-       "ETHANOL": 33,
-       "NHTOG": 34,
-       "NMOG": 35,
-       "NOX": 36,
-       "HONO": 37,
-       "NO": 38,
-       "NO2": 39,
-       "NH3": 40,
-       "SO2": 41,
-       "PM25-PRI": 42,
-       "PM2_5": 43,
-       "DIESEL-PM25": 44,
-       "PAL": 45,
-       "PCA": 46,
-       "PCL": 47,
-       "PEC": 48,
-       "PFE": 49,
-       "PK": 50,
-       "PMG": 51,
-       "PMN": 52,
-       "PMOTHR": 53,
-       "PNH4": 54,
-       "PNO3": 55,
-       "POC": 56,
-       "PSI": 57,
-       "PSO4": 58,
-       "PTI": 59
-      },
-      "case_insensitive": true,
-      "unmapped": "drop"
-     },
-     "description": "FF10 pollutant code (col 12, POLID), delivered as the `pollutant` enum integer by the loader's own `codes` map. A code outside the map is a pathway this model does not carry, so the record is dropped (record_filter semantics), which is exactly what the runner used to do by hand."
-    },
-    "annual": {
-     "file_variable": "ANN_VALUE",
-     "units": "short_ton/yr",
-     "description": "Annual emissions (col 13), in SHORT TONS per year as the column stores it."
-    },
-    "stkhgt": {
-     "file_variable": "STKHGT",
-     "units": "ft",
-     "description": "Stack height, FF10 col 17, in feet as the column stores it. Consumed by plume rise through `stk_height`, which converts it: it picks the stack's model layer, scales the unstable-buoyant rise, and a height of exactly 0 means the record emits at ground level without a plume at all."
-    },
-    "stkdiam": {
-     "file_variable": "STKDIAM",
-     "units": "ft",
-     "description": "Stack inner diameter, FF10 col 18, in feet as the column stores it. Consumed by plume rise through `stk_diam`: it sets the buoyancy flux through (ds/2)^2 and the momentum-dominated rise directly."
-    },
-    "stktemp": {
-     "file_variable": "STKTEMP",
-     "units": "degF",
-     "description": "Stack exit temperature, FF10 col 19, in degrees Fahrenheit as the column stores it. Consumed by plume rise through `stk_temp`: with the ambient temperature at the stack's layer it gives the buoyancy contrast, and Ts-Ta < 50 K is one of the three momentum-dominated conditions."
-    },
-    "stkvel": {
-     "file_variable": "STKVEL",
-     "units": "ft/s",
-     "description": "Stack exit velocity, FF10 col 21, in feet per second as the column stores it. Consumed by plume rise through `stk_vel`: it carries the buoyancy flux, and vs > 10 m/s together with vs > u is what makes a plume momentum-dominated."
-    },
-    "lon": {
-     "file_variable": "LONGITUDE",
-     "units": "degree",
-     "description": "Longitude (col 23), EPSG:4269 treated as +proj=longlat."
-    },
-    "lat": {
-     "file_variable": "LATITUDE",
-     "units": "degree",
-     "description": "Latitude (col 24), EPSG:4269 treated as +proj=longlat."
-    }
    }
   }
  },
@@ -1115,7 +790,14 @@
       "src_cells",
       "rcv_cells"
      ],
-     "description": "Source-receptor matrix for the secondary organic aerosol pathway from emission layer 0 (contracted with the VOC mass whose plume reaches layer 0). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L0.SOA by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2)."
+     "description": "Source-receptor matrix for the secondary organic aerosol pathway from emission layer 0 (contracted with the VOC mass whose plume reaches layer 0). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L0.SOA by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2).",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_SR_L0",
+      "from": {
+       "file_variable": "SOA"
+      }
+     }
     },
     "SR_SOA_L1": {
      "type": "parameter",
@@ -1125,7 +807,14 @@
       "src_cells",
       "rcv_cells"
      ],
-     "description": "Source-receptor matrix for the secondary organic aerosol pathway from emission layer 1 (contracted with the VOC mass whose plume reaches layer 1). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L1.SOA by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2)."
+     "description": "Source-receptor matrix for the secondary organic aerosol pathway from emission layer 1 (contracted with the VOC mass whose plume reaches layer 1). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L1.SOA by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2).",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_SR_L1",
+      "from": {
+       "file_variable": "SOA"
+      }
+     }
     },
     "SR_SOA_L2": {
      "type": "parameter",
@@ -1135,7 +824,14 @@
       "src_cells",
       "rcv_cells"
      ],
-     "description": "Source-receptor matrix for the secondary organic aerosol pathway from emission layer 2 (contracted with the VOC mass whose plume reaches layer 2). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L2.SOA by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2)."
+     "description": "Source-receptor matrix for the secondary organic aerosol pathway from emission layer 2 (contracted with the VOC mass whose plume reaches layer 2). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L2.SOA by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2).",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_SR_L2",
+      "from": {
+       "file_variable": "SOA"
+      }
+     }
     },
     "SR_pNO3_L0": {
      "type": "parameter",
@@ -1145,7 +841,14 @@
       "src_cells",
       "rcv_cells"
      ],
-     "description": "Source-receptor matrix for the particulate nitrate pathway from emission layer 0 (contracted with the NOx mass whose plume reaches layer 0). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L0.pNO3 by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2)."
+     "description": "Source-receptor matrix for the particulate nitrate pathway from emission layer 0 (contracted with the NOx mass whose plume reaches layer 0). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L0.pNO3 by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2).",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_SR_L0",
+      "from": {
+       "file_variable": "pNO3"
+      }
+     }
     },
     "SR_pNO3_L1": {
      "type": "parameter",
@@ -1155,7 +858,14 @@
       "src_cells",
       "rcv_cells"
      ],
-     "description": "Source-receptor matrix for the particulate nitrate pathway from emission layer 1 (contracted with the NOx mass whose plume reaches layer 1). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L1.pNO3 by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2)."
+     "description": "Source-receptor matrix for the particulate nitrate pathway from emission layer 1 (contracted with the NOx mass whose plume reaches layer 1). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L1.pNO3 by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2).",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_SR_L1",
+      "from": {
+       "file_variable": "pNO3"
+      }
+     }
     },
     "SR_pNO3_L2": {
      "type": "parameter",
@@ -1165,7 +875,14 @@
       "src_cells",
       "rcv_cells"
      ],
-     "description": "Source-receptor matrix for the particulate nitrate pathway from emission layer 2 (contracted with the NOx mass whose plume reaches layer 2). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L2.pNO3 by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2)."
+     "description": "Source-receptor matrix for the particulate nitrate pathway from emission layer 2 (contracted with the NOx mass whose plume reaches layer 2). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L2.pNO3 by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2).",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_SR_L2",
+      "from": {
+       "file_variable": "pNO3"
+      }
+     }
     },
     "SR_pNH4_L0": {
      "type": "parameter",
@@ -1175,7 +892,14 @@
       "src_cells",
       "rcv_cells"
      ],
-     "description": "Source-receptor matrix for the particulate ammonium pathway from emission layer 0 (contracted with the NH3 mass whose plume reaches layer 0). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L0.pNH4 by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2)."
+     "description": "Source-receptor matrix for the particulate ammonium pathway from emission layer 0 (contracted with the NH3 mass whose plume reaches layer 0). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L0.pNH4 by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2).",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_SR_L0",
+      "from": {
+       "file_variable": "pNH4"
+      }
+     }
     },
     "SR_pNH4_L1": {
      "type": "parameter",
@@ -1185,7 +909,14 @@
       "src_cells",
       "rcv_cells"
      ],
-     "description": "Source-receptor matrix for the particulate ammonium pathway from emission layer 1 (contracted with the NH3 mass whose plume reaches layer 1). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L1.pNH4 by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2)."
+     "description": "Source-receptor matrix for the particulate ammonium pathway from emission layer 1 (contracted with the NH3 mass whose plume reaches layer 1). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L1.pNH4 by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2).",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_SR_L1",
+      "from": {
+       "file_variable": "pNH4"
+      }
+     }
     },
     "SR_pNH4_L2": {
      "type": "parameter",
@@ -1195,7 +926,14 @@
       "src_cells",
       "rcv_cells"
      ],
-     "description": "Source-receptor matrix for the particulate ammonium pathway from emission layer 2 (contracted with the NH3 mass whose plume reaches layer 2). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L2.pNH4 by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2)."
+     "description": "Source-receptor matrix for the particulate ammonium pathway from emission layer 2 (contracted with the NH3 mass whose plume reaches layer 2). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L2.pNH4 by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2).",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_SR_L2",
+      "from": {
+       "file_variable": "pNH4"
+      }
+     }
     },
     "SR_pSO4_L0": {
      "type": "parameter",
@@ -1205,7 +943,14 @@
       "src_cells",
       "rcv_cells"
      ],
-     "description": "Source-receptor matrix for the particulate sulfate pathway from emission layer 0 (contracted with the SOx mass whose plume reaches layer 0). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L0.pSO4 by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2)."
+     "description": "Source-receptor matrix for the particulate sulfate pathway from emission layer 0 (contracted with the SOx mass whose plume reaches layer 0). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L0.pSO4 by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2).",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_SR_L0",
+      "from": {
+       "file_variable": "pSO4"
+      }
+     }
     },
     "SR_pSO4_L1": {
      "type": "parameter",
@@ -1215,7 +960,14 @@
       "src_cells",
       "rcv_cells"
      ],
-     "description": "Source-receptor matrix for the particulate sulfate pathway from emission layer 1 (contracted with the SOx mass whose plume reaches layer 1). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L1.pSO4 by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2)."
+     "description": "Source-receptor matrix for the particulate sulfate pathway from emission layer 1 (contracted with the SOx mass whose plume reaches layer 1). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L1.pSO4 by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2).",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_SR_L1",
+      "from": {
+       "file_variable": "pSO4"
+      }
+     }
     },
     "SR_pSO4_L2": {
      "type": "parameter",
@@ -1225,7 +977,14 @@
       "src_cells",
       "rcv_cells"
      ],
-     "description": "Source-receptor matrix for the particulate sulfate pathway from emission layer 2 (contracted with the SOx mass whose plume reaches layer 2). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L2.pSO4 by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2)."
+     "description": "Source-receptor matrix for the particulate sulfate pathway from emission layer 2 (contracted with the SOx mass whose plume reaches layer 2). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L2.pSO4 by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2).",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_SR_L2",
+      "from": {
+       "file_variable": "pSO4"
+      }
+     }
     },
     "SR_PrimaryPM25_L0": {
      "type": "parameter",
@@ -1235,7 +994,14 @@
       "src_cells",
       "rcv_cells"
      ],
-     "description": "Source-receptor matrix for the primary PM2.5 pathway from emission layer 0 (contracted with the PM2.5 mass whose plume reaches layer 0). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L0.PrimaryPM25 by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2)."
+     "description": "Source-receptor matrix for the primary PM2.5 pathway from emission layer 0 (contracted with the PM2.5 mass whose plume reaches layer 0). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L0.PrimaryPM25 by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2).",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_SR_L0",
+      "from": {
+       "file_variable": "PrimaryPM25"
+      }
+     }
     },
     "SR_PrimaryPM25_L1": {
      "type": "parameter",
@@ -1245,7 +1011,14 @@
       "src_cells",
       "rcv_cells"
      ],
-     "description": "Source-receptor matrix for the primary PM2.5 pathway from emission layer 1 (contracted with the PM2.5 mass whose plume reaches layer 1). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L1.PrimaryPM25 by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2)."
+     "description": "Source-receptor matrix for the primary PM2.5 pathway from emission layer 1 (contracted with the PM2.5 mass whose plume reaches layer 1). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L1.PrimaryPM25 by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2).",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_SR_L1",
+      "from": {
+       "file_variable": "PrimaryPM25"
+      }
+     }
     },
     "SR_PrimaryPM25_L2": {
      "type": "parameter",
@@ -1255,7 +1028,14 @@
       "src_cells",
       "rcv_cells"
      ],
-     "description": "Source-receptor matrix for the primary PM2.5 pathway from emission layer 2 (contracted with the PM2.5 mass whose plume reaches layer 2). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L2.PrimaryPM25 by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2)."
+     "description": "Source-receptor matrix for the primary PM2.5 pathway from emission layer 2 (contracted with the PM2.5 mass whose plume reaches layer 2). Rows are the emission-bearing source cells the rewrite derives (emis_src_cells), columns the 52411 receptors. Wired from ISRM_SR_L2.PrimaryPM25 by param_to_var; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2 (G2).",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_SR_L2",
+      "from": {
+       "file_variable": "PrimaryPM25"
+      }
+     }
     },
     "emis_lon": {
      "type": "parameter",
@@ -1264,7 +1044,14 @@
      "shape": [
       "emis_records"
      ],
-     "description": "Emission-point longitude (EPSG:4269); from EGU_Emis.lon."
+     "description": "Emission-point longitude (EPSG:4269); from EGU_Emis.lon.",
+     "update": {
+      "kind": "data",
+      "source": "EGU_Emis",
+      "from": {
+       "file_variable": "LONGITUDE"
+      }
+     }
     },
     "emis_lat": {
      "type": "parameter",
@@ -1273,7 +1060,14 @@
      "shape": [
       "emis_records"
      ],
-     "description": "Emission-point latitude (EPSG:4269); from EGU_Emis.lat."
+     "description": "Emission-point latitude (EPSG:4269); from EGU_Emis.lat.",
+     "update": {
+      "kind": "data",
+      "source": "EGU_Emis",
+      "from": {
+       "file_variable": "LATITUDE"
+      }
+     }
     },
     "emis_annual": {
      "type": "parameter",
@@ -1282,7 +1076,14 @@
      "shape": [
       "emis_records"
      ],
-     "description": "Per-record annual emissions in SHORT TONS per year, as the FF10 ANN_VALUE column stores them; from EGU_Emis.annual. `fact` is the short-ton/yr -> ug/s conversion applied once to the summed concentration."
+     "description": "Per-record annual emissions in SHORT TONS per year, as the FF10 ANN_VALUE column stores them; from EGU_Emis.annual. `fact` is the short-ton/yr -> ug/s conversion applied once to the summed concentration.",
+     "update": {
+      "kind": "data",
+      "source": "EGU_Emis",
+      "from": {
+       "file_variable": "ANN_VALUE"
+      }
+     }
     },
     "pollutant": {
      "type": "parameter",
@@ -1291,7 +1092,79 @@
      "shape": [
       "emis_records"
      ],
-     "description": "Per-record FF10 pollutant code as the `pollutant` enum integer; from EGU_Emis.pollutant."
+     "description": "Per-record FF10 pollutant code as the `pollutant` enum integer; from EGU_Emis.pollutant.",
+     "update": {
+      "kind": "data",
+      "source": "EGU_Emis",
+      "from": {
+       "file_variable": "POLID",
+       "codes": {
+        "map": {
+         "VOC": 1,
+         "VOC_INV": 2,
+         "XYL": 3,
+         "TOL": 4,
+         "TERP": 5,
+         "PAR": 6,
+         "OLE": 7,
+         "NVOL": 8,
+         "MEOH": 9,
+         "ISOP": 10,
+         "IOLE": 11,
+         "FORM": 12,
+         "ETOH": 13,
+         "ETHA": 14,
+         "ETH": 15,
+         "ALD2": 16,
+         "ALDX": 17,
+         "CB05_ALD2": 18,
+         "CB05_ALDX": 19,
+         "CB05_BENZENE": 20,
+         "CB05_ETH": 21,
+         "CB05_ETHA": 22,
+         "CB05_ETOH": 23,
+         "CB05_FORM": 24,
+         "CB05_IOLE": 25,
+         "CB05_ISOP": 26,
+         "CB05_MEOH": 27,
+         "CB05_OLE": 28,
+         "CB05_PAR": 29,
+         "CB05_TERP": 30,
+         "CB05_TOL": 31,
+         "CB05_XYL": 32,
+         "ETHANOL": 33,
+         "NHTOG": 34,
+         "NMOG": 35,
+         "NOX": 36,
+         "HONO": 37,
+         "NO": 38,
+         "NO2": 39,
+         "NH3": 40,
+         "SO2": 41,
+         "PM25-PRI": 42,
+         "PM2_5": 43,
+         "DIESEL-PM25": 44,
+         "PAL": 45,
+         "PCA": 46,
+         "PCL": 47,
+         "PEC": 48,
+         "PFE": 49,
+         "PK": 50,
+         "PMG": 51,
+         "PMN": 52,
+         "PMOTHR": 53,
+         "PNH4": 54,
+         "PNO3": 55,
+         "POC": 56,
+         "PSI": 57,
+         "PSO4": 58,
+         "PTI": 59
+        },
+        "case_insensitive": true,
+        "unmapped": "drop"
+       }
+      }
+     }
     },
     "stkhgt": {
      "type": "parameter",
@@ -1300,7 +1173,14 @@
      "shape": [
       "emis_records"
      ],
-     "description": "Stack height as the FF10 column stores it, in FEET; from EGU_Emis.stkhgt. `stk_height` converts it to metres and that is what the physics reads - `stack_layer` (which model layer the stack top is in), `delta_h` (the h^2 in the unstable-buoyant rise) and `plume_layer` (a height of exactly 0 is InMAP's ground-level path)."
+     "description": "Stack height as the FF10 column stores it, in FEET; from EGU_Emis.stkhgt. `stk_height` converts it to metres and that is what the physics reads - `stack_layer` (which model layer the stack top is in), `delta_h` (the h^2 in the unstable-buoyant rise) and `plume_layer` (a height of exactly 0 is InMAP's ground-level path).",
+     "update": {
+      "kind": "data",
+      "source": "EGU_Emis",
+      "from": {
+       "file_variable": "STKHGT"
+      }
+     }
     },
     "stkdiam": {
      "type": "parameter",
@@ -1309,7 +1189,14 @@
      "shape": [
       "emis_records"
      ],
-     "description": "Stack inner diameter as the FF10 column stores it, in FEET; from EGU_Emis.stkdiam. `stk_diam` converts it; `buoy_flux` reads that as (ds/2)^2, as does the momentum-dominated branch of `delta_h`."
+     "description": "Stack inner diameter as the FF10 column stores it, in FEET; from EGU_Emis.stkdiam. `stk_diam` converts it; `buoy_flux` reads that as (ds/2)^2, as does the momentum-dominated branch of `delta_h`.",
+     "update": {
+      "kind": "data",
+      "source": "EGU_Emis",
+      "from": {
+       "file_variable": "STKDIAM"
+      }
+     }
     },
     "stktemp": {
      "type": "parameter",
@@ -1318,7 +1205,14 @@
      "shape": [
       "emis_records"
      ],
-     "description": "Stack exit temperature as the FF10 column stores it, in degrees FAHRENHEIT; from EGU_Emis.stktemp. `stk_temp` converts it to kelvin; `temp_diff` reads that against the ambient temperature at the stack's own layer, and `delta_h` against the Ts-Ta < 50 K momentum test."
+     "description": "Stack exit temperature as the FF10 column stores it, in degrees FAHRENHEIT; from EGU_Emis.stktemp. `stk_temp` converts it to kelvin; `temp_diff` reads that against the ambient temperature at the stack's own layer, and `delta_h` against the Ts-Ta < 50 K momentum test.",
+     "update": {
+      "kind": "data",
+      "source": "EGU_Emis",
+      "from": {
+       "file_variable": "STKTEMP"
+      }
+     }
     },
     "stkvel": {
      "type": "parameter",
@@ -1327,7 +1221,14 @@
      "shape": [
       "emis_records"
      ],
-     "description": "Stack exit velocity as the FF10 column stores it, in FEET PER SECOND; from EGU_Emis.stkvel. `stk_vel` converts it to m/s; `buoy_flux` and both momentum tests in `delta_h` read that."
+     "description": "Stack exit velocity as the FF10 column stores it, in FEET PER SECOND; from EGU_Emis.stkvel. `stk_vel` converts it to m/s; `buoy_flux` and both momentum tests in `delta_h` read that.",
+     "update": {
+      "kind": "data",
+      "source": "EGU_Emis",
+      "from": {
+       "file_variable": "STKVEL"
+      }
+     }
     },
     "W": {
      "type": "parameter",
@@ -1336,7 +1237,14 @@
      "shape": [
       "all_cells"
      ],
-     "description": "Cell west edge (LCC m); from ISRM_Grid.W (full 596444, prefix used)."
+     "description": "Cell west edge (LCC m); from ISRM_Grid.W (full 596444, prefix used).",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "W"
+      }
+     }
     },
     "S": {
      "type": "parameter",
@@ -1345,7 +1253,14 @@
      "shape": [
       "all_cells"
      ],
-     "description": "Cell south edge (LCC m); from ISRM_Grid.S."
+     "description": "Cell south edge (LCC m); from ISRM_Grid.S.",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "S"
+      }
+     }
     },
     "E": {
      "type": "parameter",
@@ -1354,7 +1269,14 @@
      "shape": [
       "all_cells"
      ],
-     "description": "Cell east edge (LCC m); from ISRM_Grid.E."
+     "description": "Cell east edge (LCC m); from ISRM_Grid.E.",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "E"
+      }
+     }
     },
     "N": {
      "type": "parameter",
@@ -1363,7 +1285,14 @@
      "shape": [
       "all_cells"
      ],
-     "description": "Cell north edge (LCC m); from ISRM_Grid.N."
+     "description": "Cell north edge (LCC m); from ISRM_Grid.N.",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "N"
+      }
+     }
     },
     "TotalPop": {
      "type": "parameter",
@@ -1372,7 +1301,14 @@
      "shape": [
       "all_cells"
      ],
-     "description": "Population per cell; from ISRM_Grid.TotalPop (read on the rcv range = [0:52411] prefix slice)."
+     "description": "Population per cell; from ISRM_Grid.TotalPop (read on the rcv range = [0:52411] prefix slice).",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "TotalPop"
+      }
+     }
     },
     "MortalityRate": {
      "type": "parameter",
@@ -1381,7 +1317,14 @@
      "shape": [
       "all_cells"
      ],
-     "description": "Baseline mortality per 100k; from ISRM_Grid.MortalityRate (prefix [0:52411])."
+     "description": "Baseline mortality per 100k; from ISRM_Grid.MortalityRate (prefix [0:52411]).",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "MortalityRate"
+      }
+     }
     },
     "Temperature": {
      "type": "parameter",
@@ -1390,7 +1333,14 @@
      "shape": [
       "all_cells"
      ],
-     "description": "Air temperature in each cell. From ISRM_Grid.Temperature: one value per cell of the full 596444-cell grid, layer-major over the 27 model layers, so `l*N_SRC + c` reaches layer l of source cell c."
+     "description": "Air temperature in each cell. From ISRM_Grid.Temperature: one value per cell of the full 596444-cell grid, layer-major over the 27 model layers, so `l*N_SRC + c` reaches layer l of source cell c.",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "Temperature"
+      }
+     }
     },
     "WindSpeed": {
      "type": "parameter",
@@ -1399,7 +1349,14 @@
      "shape": [
       "all_cells"
      ],
-     "description": "Wind speed in each cell. From ISRM_Grid.WindSpeed: one value per cell of the full 596444-cell grid, layer-major over the 27 model layers, so `l*N_SRC + c` reaches layer l of source cell c."
+     "description": "Wind speed in each cell. From ISRM_Grid.WindSpeed: one value per cell of the full 596444-cell grid, layer-major over the 27 model layers, so `l*N_SRC + c` reaches layer l of source cell c.",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "WindSpeed"
+      }
+     }
     },
     "WindSpeedInverse": {
      "type": "parameter",
@@ -1408,7 +1365,14 @@
      "shape": [
       "all_cells"
      ],
-     "description": "Cell mean of 1/u, the average InMAP takes over the wind rose rather than the reciprocal of the mean speed. From ISRM_Grid.WindSpeedInverse: one value per cell of the full 596444-cell grid, layer-major over the 27 model layers, so `l*N_SRC + c` reaches layer l of source cell c."
+     "description": "Cell mean of 1/u, the average InMAP takes over the wind rose rather than the reciprocal of the mean speed. From ISRM_Grid.WindSpeedInverse: one value per cell of the full 596444-cell grid, layer-major over the 27 model layers, so `l*N_SRC + c` reaches layer l of source cell c.",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "WindSpeedInverse"
+      }
+     }
     },
     "WindSpeedMinusThird": {
      "type": "parameter",
@@ -1417,7 +1381,14 @@
      "shape": [
       "all_cells"
      ],
-     "description": "Cell mean of u^(-1/3). From ISRM_Grid.WindSpeedMinusThird: one value per cell of the full 596444-cell grid, layer-major over the 27 model layers, so `l*N_SRC + c` reaches layer l of source cell c."
+     "description": "Cell mean of u^(-1/3). From ISRM_Grid.WindSpeedMinusThird: one value per cell of the full 596444-cell grid, layer-major over the 27 model layers, so `l*N_SRC + c` reaches layer l of source cell c.",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "WindSpeedMinusThird"
+      }
+     }
     },
     "WindSpeedMinusOnePointFour": {
      "type": "parameter",
@@ -1426,7 +1397,14 @@
      "shape": [
       "all_cells"
      ],
-     "description": "Cell mean of u^(-1.4). From ISRM_Grid.WindSpeedMinusOnePointFour: one value per cell of the full 596444-cell grid, layer-major over the 27 model layers, so `l*N_SRC + c` reaches layer l of source cell c."
+     "description": "Cell mean of u^(-1.4). From ISRM_Grid.WindSpeedMinusOnePointFour: one value per cell of the full 596444-cell grid, layer-major over the 27 model layers, so `l*N_SRC + c` reaches layer l of source cell c.",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "WindSpeedMinusOnePointFour"
+      }
+     }
     },
     "S1": {
      "type": "parameter",
@@ -1435,7 +1413,14 @@
      "shape": [
       "all_cells"
      ],
-     "description": "Stability parameter S1 = (g/theta) dtheta/dz, the buoyancy frequency squared that scales the stable-plume rise. From ISRM_Grid.S1: one value per cell of the full 596444-cell grid, layer-major over the 27 model layers, so `l*N_SRC + c` reaches layer l of source cell c."
+     "description": "Stability parameter S1 = (g/theta) dtheta/dz, the buoyancy frequency squared that scales the stable-plume rise. From ISRM_Grid.S1: one value per cell of the full 596444-cell grid, layer-major over the 27 model layers, so `l*N_SRC + c` reaches layer l of source cell c.",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "S1"
+      }
+     }
     },
     "SClass": {
      "type": "parameter",
@@ -1444,7 +1429,14 @@
      "shape": [
       "all_cells"
      ],
-     "description": "Stability class indicator: > 0.5 marks a stably stratified cell. From ISRM_Grid.SClass: one value per cell of the full 596444-cell grid, layer-major over the 27 model layers, so `l*N_SRC + c` reaches layer l of source cell c."
+     "description": "Stability class indicator: > 0.5 marks a stably stratified cell. From ISRM_Grid.SClass: one value per cell of the full 596444-cell grid, layer-major over the 27 model layers, so `l*N_SRC + c` reaches layer l of source cell c.",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "SClass"
+      }
+     }
     },
     "LayerHeight": {
      "type": "parameter",
@@ -1453,7 +1445,14 @@
      "shape": [
       "all_cells"
      ],
-     "description": "Staggered layer-BOTTOM height: LayerHeight[l, c] is the height of the bottom of model layer l over cell c, and layer 0's is 0. This is the column InMAP's findLayer searches. From ISRM_Grid.LayerHeight: one value per cell of the full 596444-cell grid, layer-major over the 27 model layers, so `l*N_SRC + c` reaches layer l of source cell c."
+     "description": "Staggered layer-BOTTOM height: LayerHeight[l, c] is the height of the bottom of model layer l over cell c, and layer 0's is 0. This is the column InMAP's findLayer searches. From ISRM_Grid.LayerHeight: one value per cell of the full 596444-cell grid, layer-major over the 27 model layers, so `l*N_SRC + c` reaches layer l of source cell c.",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "LayerHeight"
+      }
+     }
     },
     "Dz": {
      "type": "parameter",
@@ -1462,7 +1461,14 @@
      "shape": [
       "all_cells"
      ],
-     "description": "Layer THICKNESS: Dz[l, c] is the vertical extent of model layer l over cell c, so LayerHeight[l, c] + Dz[l, c]/2 is that layer's CENTRE height \u2014 which is the column InMAP's sr.Reader.layerFracs interpolates on (sr.d.VerticalProfile fills height[i] = c.LayerHeight + c.Dz/2). Length 596444 (N_ALL), layer-major over all 27 model layers. From ISRM_Grid.Dz: one value per cell of the full 596444-cell grid, so `l*N_SRC + c` reaches layer l of source cell c."
+     "description": "Layer THICKNESS: Dz[l, c] is the vertical extent of model layer l over cell c, so LayerHeight[l, c] + Dz[l, c]/2 is that layer's CENTRE height \u2014 which is the column InMAP's sr.Reader.layerFracs interpolates on (sr.d.VerticalProfile fills height[i] = c.LayerHeight + c.Dz/2). Length 596444 (N_ALL), layer-major over all 27 model layers. From ISRM_Grid.Dz: one value per cell of the full 596444-cell grid, so `l*N_SRC + c` reaches layer l of source cell c.",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "Dz"
+      }
+     }
     },
     "fact": {
      "type": "parameter",
@@ -1539,35 +1545,736 @@
      "shape": [
       "src_cells"
      ],
-     "description": "source-cell rectangle W-edge (projected LCC meters), src_cells axis."
+     "description": "source-cell rectangle W-edge (projected LCC meters), src_cells axis.",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "W",
+       "select": {
+        "axes": [
+         {
+          "range": {
+           "start": 0,
+           "stop": "N_SRC"
+          }
+         }
+        ]
+       }
+      }
+     },
+     "units": "m"
     },
     "src_S": {
      "type": "parameter",
      "shape": [
       "src_cells"
      ],
-     "description": "source-cell rectangle S-edge (projected LCC meters), src_cells axis."
+     "description": "source-cell rectangle S-edge (projected LCC meters), src_cells axis.",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "S",
+       "select": {
+        "axes": [
+         {
+          "range": {
+           "start": 0,
+           "stop": "N_SRC"
+          }
+         }
+        ]
+       }
+      }
+     },
+     "units": "m"
     },
     "src_E": {
      "type": "parameter",
      "shape": [
       "src_cells"
      ],
-     "description": "source-cell rectangle E-edge (projected LCC meters), src_cells axis."
+     "description": "source-cell rectangle E-edge (projected LCC meters), src_cells axis.",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "E",
+       "select": {
+        "axes": [
+         {
+          "range": {
+           "start": 0,
+           "stop": "N_SRC"
+          }
+         }
+        ]
+       }
+      }
+     },
+     "units": "m"
     },
     "src_N": {
      "type": "parameter",
      "shape": [
       "src_cells"
      ],
-     "description": "source-cell rectangle N-edge (projected LCC meters), src_cells axis."
+     "description": "source-cell rectangle N-edge (projected LCC meters), src_cells axis.",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "N",
+       "select": {
+        "axes": [
+         {
+          "range": {
+           "start": 0,
+           "stop": "N_SRC"
+          }
+         }
+        ]
+       }
+      }
+     },
+     "units": "m"
     },
     "X": {
-     "type": "observed",
+     "type": "unknown",
      "shape": [
       "emis_records"
      ],
-     "expression": {
+     "description": "Lambert-conformal-conic forward-x of the raw emission coordinate (== lambert_conformal_forward_x expanded to trig). Projected at BUILD time by the general-eval coordinate path (Phase 5 Part A) \u2014 the caller supplies only raw emis_lon/emis_lat."
+    },
+    "Y": {
+     "type": "unknown",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "Lambert-conformal-conic forward-y of the raw emission coordinate (== lambert_conformal_forward_y expanded to trig). Projected at BUILD time by the general-eval coordinate path (Phase 5 Part A) \u2014 the caller supplies only raw emis_lon/emis_lat."
+    },
+    "is_VOC": {
+     "type": "unknown",
+     "units": "1",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "1 if the record's pollutant code is a VOC-class code (STEP 0.6 map), else 0."
+    },
+    "is_NOx": {
+     "type": "unknown",
+     "units": "1",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "1 if the record's pollutant code is a NOx-class code (STEP 0.6 map), else 0."
+    },
+    "is_NH3": {
+     "type": "unknown",
+     "units": "1",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "1 if the record's pollutant code is a NH3-class code (STEP 0.6 map), else 0."
+    },
+    "is_SOx": {
+     "type": "unknown",
+     "units": "1",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "1 if the record's pollutant code is a SOx-class code (STEP 0.6 map), else 0."
+    },
+    "is_PM25": {
+     "type": "unknown",
+     "units": "1",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "1 if the record's pollutant code is a PM25-class code (STEP 0.6 map), else 0."
+    },
+    "stk_height": {
+     "type": "unknown",
+     "units": "m",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "Stack height in metres, from the raw FF10 column (col 17, feet). TWO conditionings, both measured against the delivered arrays rather than assumed. (a) UNITS: the loader variable declares its FF10 column's own unit and NO `unit_conversion` \u2014 see format gap G8; the conversion is stated here, at the one place the value is read, so it happens exactly once whatever a binding does at the provider seam. (b) BLANKS: a blank FF10 numeric field is delivered as NaN, and `record_filter` does not drop those records because a stack without this column is still a real emission record. InMAP reads the same blank as Go's zero value, so `ifelse(x == x, ., 0)` \u2014 false only for NaN \u2014 reproduces that. Left unguarded a single NaN would propagate through the whole branch tree and silently land the record in SR layer 0."
+    },
+    "stk_diam": {
+     "type": "unknown",
+     "units": "m",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "Stack inner diameter in metres, from the raw FF10 column (col 18, feet). TWO conditionings, both measured against the delivered arrays rather than assumed. (a) UNITS: the loader variable declares its FF10 column's own unit and NO `unit_conversion` \u2014 see format gap G8; the conversion is stated here, at the one place the value is read, so it happens exactly once whatever a binding does at the provider seam. (b) BLANKS: a blank FF10 numeric field is delivered as NaN, and `record_filter` does not drop those records because a stack without this column is still a real emission record. InMAP reads the same blank as Go's zero value, so `ifelse(x == x, ., 0)` \u2014 false only for NaN \u2014 reproduces that. Left unguarded a single NaN would propagate through the whole branch tree and silently land the record in SR layer 0."
+    },
+    "stk_temp": {
+     "type": "unknown",
+     "units": "K",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "Stack exit temperature in kelvin, from the raw FF10 column (col 19, degrees Fahrenheit): (F - 32)*5/9 + 273.15. TWO conditionings, both measured against the delivered arrays rather than assumed. (a) UNITS: the loader variable declares its FF10 column's own unit and NO `unit_conversion` \u2014 see format gap G8; the conversion is stated here, at the one place the value is read, so it happens exactly once whatever a binding does at the provider seam. (b) BLANKS: a blank FF10 numeric field is delivered as NaN, and `record_filter` does not drop those records because a stack without this column is still a real emission record. InMAP reads the same blank as Go's zero value, so `ifelse(x == x, ., 0)` \u2014 false only for NaN \u2014 reproduces that. Left unguarded a single NaN would propagate through the whole branch tree and silently land the record in SR layer 0."
+    },
+    "stk_vel": {
+     "type": "unknown",
+     "units": "m/s",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "Stack exit velocity in metres per second, from the raw FF10 column (col 21, feet per second). TWO conditionings, both measured against the delivered arrays rather than assumed. (a) UNITS: the loader variable declares its FF10 column's own unit and NO `unit_conversion` \u2014 see format gap G8; the conversion is stated here, at the one place the value is read, so it happens exactly once whatever a binding does at the provider seam. (b) BLANKS: a blank FF10 numeric field is delivered as NaN, and `record_filter` does not drop those records because a stack without this column is still a real emission record. InMAP reads the same blank as Go's zero value, so `ifelse(x == x, ., 0)` \u2014 false only for NaN \u2014 reproduces that. Left unguarded a single NaN would propagate through the whole branch tree and silently land the record in SR layer 0."
+    },
+    "stack_layer": {
+     "type": "unknown",
+     "units": "1",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "Model layer the STACK TOP sits in, for the source cell that contains the record: InMAP's findLayer (sort.SearchFloat64s on the staggered LayerHeight column, minus one unless zero), which with LayerHeight[0]=0 is exactly the count of layer bottoms strictly below the stack. FOUR indicators is enough and is asserted by the inventory: the tallest EGU stack is 316.38 m and the lowest layer-4 bottom is 348.44 m, so the stack layer is always in {0,1,2,3}; four terms would still cover the tallest chimney on Earth (~419.7 m, against a lowest layer-5 bottom of 503.89 m). The leading containment indicator is the same spatial join E_* uses, so this picks the record's own cell and is 0 for a record outside the grid. IN-BOUNDS ARGUMENT, load-bearing: a sum of four indicators is at most 4, so the largest LayerHeight offset any of these observeds reaches is 4*52411 + 52410 = 262054 < 596444 = N_ALL. No clamp is needed, and none should be added on the assumption that one is missing \u2014 but do not widen the sum without redoing this arithmetic, because an out-of-range const-array gather is a hard error in all three bindings (Rust returned a silent 0.0 until EarthSciAST 5af33a14 made it raise E_TREEWALK_CONSTARRAY_OOB like the others)."
+    },
+    "air_temp": {
+     "type": "unknown",
+     "units": "K",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "Meteorology at the stack top: air temperature, read in the record's own source cell at model layer `stack_layer` via the flat layer-major offset `stack_layer[r]*N_SRC + c`; 0 for a record outside the grid."
+    },
+    "wind_speed": {
+     "type": "unknown",
+     "units": "m/s",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "Meteorology at the stack top: wind speed, read in the record's own source cell at model layer `stack_layer` via the flat layer-major offset `stack_layer[r]*N_SRC + c`; 0 for a record outside the grid."
+    },
+    "wind_inv": {
+     "type": "unknown",
+     "units": "s/m",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "Meteorology at the stack top: the cell mean of 1/u, read in the record's own source cell at model layer `stack_layer` via the flat layer-major offset `stack_layer[r]*N_SRC + c`; 0 for a record outside the grid."
+    },
+    "wind_m13": {
+     "type": "unknown",
+     "units": "(m/s)^(-1/3)",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "Meteorology at the stack top: the cell mean of u^(-1/3), read in the record's own source cell at model layer `stack_layer` via the flat layer-major offset `stack_layer[r]*N_SRC + c`; 0 for a record outside the grid."
+    },
+    "wind_m14": {
+     "type": "unknown",
+     "units": "(m/s)^-1.4",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "Meteorology at the stack top: the cell mean of u^(-1.4), read in the record's own source cell at model layer `stack_layer` via the flat layer-major offset `stack_layer[r]*N_SRC + c`; 0 for a record outside the grid."
+    },
+    "s_class": {
+     "type": "unknown",
+     "units": "1",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "Meteorology at the stack top: the stability class indicator (>0.5 = stable), read in the record's own source cell at model layer `stack_layer` via the flat layer-major offset `stack_layer[r]*N_SRC + c`; 0 for a record outside the grid."
+    },
+    "s_param": {
+     "type": "unknown",
+     "units": "1/s^2",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "Meteorology at the stack top: the stability parameter S1 = (g/theta) dtheta/dz, read in the record's own source cell at model layer `stack_layer` via the flat layer-major offset `stack_layer[r]*N_SRC + c`; 0 for a record outside the grid."
+    },
+    "temp_diff": {
+     "type": "unknown",
+     "units": "1",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "The symmetrised stack/air temperature contrast 2(Ts-Ta)/(Ts+Ta) that calcDeltaHPrecomputed uses \u2014 NOT calcDeltaH's (Ts-Ta)/Ts; InMAP calls the precomputed one. The denominator is guarded rather than the whole quotient branched, because `ifelse` is EAGER inside an aggregate in every binding and Python's division is plain scalar division, so a 1/0 in an UNTAKEN branch would still abort the build. Guarding gives 0/1 = 0 when Ts == Ta, which is exactly InMAP's special case, with no second branch. A separate observed rather than an inlined subtree because there is no CSE on the observed-field path: repeating it would cost repeated evaluations, not just bytes."
+    },
+    "buoy_flux": {
+     "type": "unknown",
+     "units": "m^4/s^3",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "Buoyancy flux F = g * temp_diff * vs * (ds/2)^2, with g = 9.80665 (plumerise.g). Separate for the same no-CSE reason as `temp_diff`: the branch tree in `delta_h` reads it three times."
+    },
+    "delta_h": {
+     "type": "unknown",
+     "units": "m",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "Plume rise above the stack top, ctessum/atmos calcDeltaHPrecomputed branch for branch: momentum-dominated when Ts-Ta < 50 K and u < vs and vs > 10 m/s; otherwise buoyant, stable (29 (F/S1)^(1/3) u^(-1/3)) when SClass > 0.5 and S1 != 0, unstable (7.4 (F h^2)^(1/3) u^-1) otherwise, and 0 when F <= 0. THREE spellings here are load-bearing and were each shown necessary against all three bindings. (1) The cube-root exponent is the literal 0.333333333, not 1/3 \u2014 InMAP hard-codes it \u2014 and the power operator must be spelled `^`: Rust rejects `pow`/`**` as unlowered, while Julia and Python silently accept `pow`, so a typo would pass two bindings and fail the third. (2) EVERY fractional-power base is wrapped in max(., 0). `ifelse` is eager inside an aggregate everywhere, so the untaken branch is evaluated too, and on a negative base Julia raises DomainError, Rust yields NaN, and Python returns the REAL PART of a complex result behind a ComplexWarning \u2014 a plausible wrong number, the worst of the three. The clamp is a no-op on the branch actually taken. (3) `s_param == 0` is tested by NESTING rather than by an `and`, which reproduces Go's three-way stable guard (sClass > 0.5 && s1 != 0 && F > 0) exactly."
+    },
+    "plume_height": {
+     "type": "unknown",
+     "units": "m",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "Height the plume centreline reaches: stack height + delta_h."
+    },
+    "plume_model_layer": {
+     "type": "unknown",
+     "units": "1",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "The MODEL layer the plume centreline reaches, SATURATED AT SR_MODEL_L2 = 6. findLayer again (a sum of indicators against the staggered layer BOTTOMS, which with LayerHeight[0] = 0 counts the bottoms strictly below the plume), now on plume_height instead of stack height, and with InMAP's zero-stack rule folded in: a record with stack height 0 never enters IsPlumeIn at all (`if e.Height != 0` in sr.Reader.Concentrations) and emits at ground level, hence the outer ifelse. SIX indicators, NOT more, and the saturation is the point rather than an approximation: sr.Reader.layerFracs maps model layer > SR_MODEL_L2 to SR layer 2 with weight 1 (its AboveTopErr branch, which the CLI downgrades to a log line), which is exactly what it maps model layer == SR_MODEL_L2 to, so capping the count at 6 folds the two branches into one and loses nothing. IN-BOUNDS ARGUMENT, load-bearing: a sum of six indicators is at most 6, so the largest offset reached here is 6*52411 + 52410 = 366876 < 596444 = N_ALL. Widening the sum past 6 would be WRONG as well as out-of-range-prone \u2014 model layer 8 is not at offset 8*N_SRC + c, because the flat layout switches to the 9324-cell coarse grid above layer 7. The leading containment indicator is the same spatial join E_* uses, so this picks the record's own cell and is 0 for a record outside the grid."
+    },
+    "frac_lo": {
+     "type": "unknown",
+     "units": "1",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "Interpolation fraction for a plume whose model layer falls STRICTLY BETWEEN SR layers 0 and 1 \u2014 i.e. model layer 1 or 2, the only two strictly between 0 and SR_MODEL_L1 = 3. frac = (plume_height - below)/(above - below), with `below` and `above` the CELL-CENTRE heights of model layers 0 and SR_MODEL_L1 over the record's own source cell: LayerHeight[l*N_SRC + c] + 0.5*Dz[l*N_SRC + c]. Centres, not layer bottoms \u2014 layerFracs reads them out of sr.d.VerticalProfile, which fills height[i] = c.LayerHeight + c.Dz/2. The denominator is guarded rather than the quotient branched, because `ifelse` is EAGER inside an aggregate in every binding. Evaluated for EVERY record, including the ones this branch does not own; w_sr0/w_sr1/w_sr2 multiply it by zero there, and the guard keeps it finite so an eager binding has nothing to trip over. THE INTERPOLATION IS CORRECTED HERE, AND THAT IS DELIBERATE. InMAP's layerFracs returns `[]float64{frac, 1 - frac}` for `[]int{i, i+1}` \u2014 the LOWER SR layer gets `frac`, so a HIGHER plume puts MORE weight on the LOWER layer. That is a bug: it anti-correlates height with placement. This document gives the lower layer `1 - frac` and the upper `frac`, which is ordinary linear interpolation. It conserves mass either way, but conserving mass is NOT the same as leaving the answer alone: MEASURED at full scale, correcting it moves the national totals from 6936.106343 / 15640.080273 to 7022.724781 / 15835.993596, so InMAP's version \u2014 and the published tutorial that rests on it \u2014 runs about 1.25% low. THIS DOCUMENT THEREFORE DOES NOT REPRODUCE THE TUTORIAL'S TOTALS, BY DESIGN. Matching InMAP was the means of proving the pipeline, not the goal; that proof is complete (agreement with the live service to 8.9e-9 at reduced scale, where neither of InMAP's two plume-rise defects can fire), and carrying a known defect past it would mean publishing numbers known to be wrong."
+    },
+    "frac_hi": {
+     "type": "unknown",
+     "units": "1",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "Interpolation fraction for a plume whose model layer falls STRICTLY BETWEEN SR layers 1 and 2 \u2014 i.e. model layer 4 or 5, the only two strictly between SR_MODEL_L1 = 3 and SR_MODEL_L2 = 6. frac = (plume_height - below)/(above - below), with `below` and `above` the CELL-CENTRE heights of model layers SR_MODEL_L1 and SR_MODEL_L2 over the record's own source cell: LayerHeight[l*N_SRC + c] + 0.5*Dz[l*N_SRC + c]. Centres, not layer bottoms \u2014 layerFracs reads them out of sr.d.VerticalProfile, which fills height[i] = c.LayerHeight + c.Dz/2. The denominator is guarded rather than the quotient branched, because `ifelse` is EAGER inside an aggregate in every binding. Evaluated for EVERY record, including the ones this branch does not own; w_sr0/w_sr1/w_sr2 multiply it by zero there, and the guard keeps it finite so an eager binding has nothing to trip over. THE INTERPOLATION IS CORRECTED HERE, AND THAT IS DELIBERATE. InMAP's layerFracs returns `[]float64{frac, 1 - frac}` for `[]int{i, i+1}` \u2014 the LOWER SR layer gets `frac`, so a HIGHER plume puts MORE weight on the LOWER layer. That is a bug: it anti-correlates height with placement. This document gives the lower layer `1 - frac` and the upper `frac`, which is ordinary linear interpolation. It conserves mass either way, but conserving mass is NOT the same as leaving the answer alone: MEASURED at full scale, correcting it moves the national totals from 6936.106343 / 15640.080273 to 7022.724781 / 15835.993596, so InMAP's version \u2014 and the published tutorial that rests on it \u2014 runs about 1.25% low. THIS DOCUMENT THEREFORE DOES NOT REPRODUCE THE TUTORIAL'S TOTALS, BY DESIGN. Matching InMAP was the means of proving the pipeline, not the goal; that proof is complete (agreement with the live service to 8.9e-9 at reduced scale, where neither of InMAP's two plume-rise defects can fire), and carrying a known defect past it would mean publishing numbers known to be wrong."
+    },
+    "w_sr0": {
+     "type": "unknown",
+     "units": "1",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "THE ANSWER PLUME RISE EXISTS TO PRODUCE, part 1 of 3: the fraction of this record's mass that InMAP's sr.Reader.layerFracs charges to SR emission layer 0. w_sr0 + w_sr1 + w_sr2 == 1 for every record, so no mass is created or lost; a record is SPLIT across two SR layers whenever its model layer falls strictly between two entries of `layers` = [0, 3, 6], and lands wholly in one layer otherwise. Layer 0 takes a record whose plume never leaves model layer 0 (including every zero-height stack), plus the 1 - frac_lo share of one that stopped in model layer 1 or 2. Layer-by-layer, with M = plume_model_layer: M == 0 -> (1, 0, 0); M in {1, 2} -> (1 - frac_lo, frac_lo, 0); M == 3 -> (0, 1, 0); M in {4, 5} -> (0, 1 - frac_hi, frac_hi); M == 6 -> (0, 0, 1), which by saturation also covers every model layer above 6. A record outside the grid gets M == 0 and hence w_sr0 == 1, which charges nothing anywhere because the containment factor in every E_* aggregate is 0 for it. THE INTERPOLATION IS CORRECTED HERE, AND THAT IS DELIBERATE. InMAP's layerFracs returns `[]float64{frac, 1 - frac}` for `[]int{i, i+1}` \u2014 the LOWER SR layer gets `frac`, so a HIGHER plume puts MORE weight on the LOWER layer. That is a bug: it anti-correlates height with placement. This document gives the lower layer `1 - frac` and the upper `frac`, which is ordinary linear interpolation. It conserves mass either way, but conserving mass is NOT the same as leaving the answer alone: MEASURED at full scale, correcting it moves the national totals from 6936.106343 / 15640.080273 to 7022.724781 / 15835.993596, so InMAP's version \u2014 and the published tutorial that rests on it \u2014 runs about 1.25% low. THIS DOCUMENT THEREFORE DOES NOT REPRODUCE THE TUTORIAL'S TOTALS, BY DESIGN. Matching InMAP was the means of proving the pipeline, not the goal; that proof is complete (agreement with the live service to 8.9e-9 at reduced scale, where neither of InMAP's two plume-rise defects can fire), and carrying a known defect past it would mean publishing numbers known to be wrong."
+    },
+    "w_sr1": {
+     "type": "unknown",
+     "units": "1",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "THE ANSWER PLUME RISE EXISTS TO PRODUCE, part 2 of 3: the fraction of this record's mass that InMAP's sr.Reader.layerFracs charges to SR emission layer 1. w_sr0 + w_sr1 + w_sr2 == 1 for every record, so no mass is created or lost; a record is SPLIT across two SR layers whenever its model layer falls strictly between two entries of `layers` = [0, 3, 6], and lands wholly in one layer otherwise. Layer 1 takes all of a record that stopped in model layer 3 \u2014 an exact match against `layers`[1] \u2014 plus the frac_lo share of one in model layer 1 or 2 and the 1 - frac_hi share of one in model layer 4 or 5. Layer-by-layer, with M = plume_model_layer: M == 0 -> (1, 0, 0); M in {1, 2} -> (1 - frac_lo, frac_lo, 0); M == 3 -> (0, 1, 0); M in {4, 5} -> (0, 1 - frac_hi, frac_hi); M == 6 -> (0, 0, 1), which by saturation also covers every model layer above 6. A record outside the grid gets M == 0 and hence w_sr0 == 1, which charges nothing anywhere because the containment factor in every E_* aggregate is 0 for it. THE INTERPOLATION IS CORRECTED HERE, AND THAT IS DELIBERATE. InMAP's layerFracs returns `[]float64{frac, 1 - frac}` for `[]int{i, i+1}` \u2014 the LOWER SR layer gets `frac`, so a HIGHER plume puts MORE weight on the LOWER layer. That is a bug: it anti-correlates height with placement. This document gives the lower layer `1 - frac` and the upper `frac`, which is ordinary linear interpolation. It conserves mass either way, but conserving mass is NOT the same as leaving the answer alone: MEASURED at full scale, correcting it moves the national totals from 6936.106343 / 15640.080273 to 7022.724781 / 15835.993596, so InMAP's version \u2014 and the published tutorial that rests on it \u2014 runs about 1.25% low. THIS DOCUMENT THEREFORE DOES NOT REPRODUCE THE TUTORIAL'S TOTALS, BY DESIGN. Matching InMAP was the means of proving the pipeline, not the goal; that proof is complete (agreement with the live service to 8.9e-9 at reduced scale, where neither of InMAP's two plume-rise defects can fire), and carrying a known defect past it would mean publishing numbers known to be wrong."
+    },
+    "w_sr2": {
+     "type": "unknown",
+     "units": "1",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "THE ANSWER PLUME RISE EXISTS TO PRODUCE, part 3 of 3: the fraction of this record's mass that InMAP's sr.Reader.layerFracs charges to SR emission layer 2. w_sr0 + w_sr1 + w_sr2 == 1 for every record, so no mass is created or lost; a record is SPLIT across two SR layers whenever its model layer falls strictly between two entries of `layers` = [0, 3, 6], and lands wholly in one layer otherwise. Layer 2 takes all of a record at or above model layer 6 \u2014 an exact match against `layers`[2], or InMAP's AboveTopErr clamp, which plume_model_layer's saturation makes the same branch \u2014 plus the frac_hi share of one in model layer 4 or 5. Layer-by-layer, with M = plume_model_layer: M == 0 -> (1, 0, 0); M in {1, 2} -> (1 - frac_lo, frac_lo, 0); M == 3 -> (0, 1, 0); M in {4, 5} -> (0, 1 - frac_hi, frac_hi); M == 6 -> (0, 0, 1), which by saturation also covers every model layer above 6. A record outside the grid gets M == 0 and hence w_sr0 == 1, which charges nothing anywhere because the containment factor in every E_* aggregate is 0 for it. THE INTERPOLATION IS CORRECTED HERE, AND THAT IS DELIBERATE. InMAP's layerFracs returns `[]float64{frac, 1 - frac}` for `[]int{i, i+1}` \u2014 the LOWER SR layer gets `frac`, so a HIGHER plume puts MORE weight on the LOWER layer. That is a bug: it anti-correlates height with placement. This document gives the lower layer `1 - frac` and the upper `frac`, which is ordinary linear interpolation. It conserves mass either way, but conserving mass is NOT the same as leaving the answer alone: MEASURED at full scale, correcting it moves the national totals from 6936.106343 / 15640.080273 to 7022.724781 / 15835.993596, so InMAP's version \u2014 and the published tutorial that rests on it \u2014 runs about 1.25% low. THIS DOCUMENT THEREFORE DOES NOT REPRODUCE THE TUTORIAL'S TOTALS, BY DESIGN. Matching InMAP was the means of proving the pipeline, not the goal; that proof is complete (agreement with the live service to 8.9e-9 at reduced scale, where neither of InMAP's two plume-rise defects can fire), and carrying a known defect past it would mean publishing numbers known to be wrong."
+    },
+    "sr_lower": {
+     "type": "unknown",
+     "units": "1",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "The LOWER of the (at most two) SR emission layers this record's mass is charged to \u2014 the index layerFracs returns first. 0 for a plume at or below model layer 2, 1 for model layers 3 to 5, 2 for model layer 6 and above. It is an integer-valued label, so it is what the cross-binding contract can compare EXACTLY (the weights beside it are floats); together with w_sr<n> it reconstructs the whole assignment, since the upper layer, when there is one, is always sr_lower + 1. It replaces the old single-layer `plume_layer`, which stopped describing the model the moment a record could be split across two layers."
+    },
+    "E_VOC_L0": {
+     "type": "unknown",
+     "units": "short_ton/yr",
+     "shape": [
+      "src_cells"
+     ],
+     "description": "VOC emissions binned into each source cell from the SR-emission-layer-0 share of every record's mass: sum over records r contained in cell c of annual[r]*is_VOC[r]*w_sr0[r]. w_sr0 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+    },
+    "E_VOC_L1": {
+     "type": "unknown",
+     "units": "short_ton/yr",
+     "shape": [
+      "src_cells"
+     ],
+     "description": "VOC emissions binned into each source cell from the SR-emission-layer-1 share of every record's mass: sum over records r contained in cell c of annual[r]*is_VOC[r]*w_sr1[r]. w_sr1 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+    },
+    "E_VOC_L2": {
+     "type": "unknown",
+     "units": "short_ton/yr",
+     "shape": [
+      "src_cells"
+     ],
+     "description": "VOC emissions binned into each source cell from the SR-emission-layer-2 share of every record's mass: sum over records r contained in cell c of annual[r]*is_VOC[r]*w_sr2[r]. w_sr2 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+    },
+    "E_NOx_L0": {
+     "type": "unknown",
+     "units": "short_ton/yr",
+     "shape": [
+      "src_cells"
+     ],
+     "description": "NOx emissions binned into each source cell from the SR-emission-layer-0 share of every record's mass: sum over records r contained in cell c of annual[r]*is_NOx[r]*w_sr0[r]. w_sr0 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+    },
+    "E_NOx_L1": {
+     "type": "unknown",
+     "units": "short_ton/yr",
+     "shape": [
+      "src_cells"
+     ],
+     "description": "NOx emissions binned into each source cell from the SR-emission-layer-1 share of every record's mass: sum over records r contained in cell c of annual[r]*is_NOx[r]*w_sr1[r]. w_sr1 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+    },
+    "E_NOx_L2": {
+     "type": "unknown",
+     "units": "short_ton/yr",
+     "shape": [
+      "src_cells"
+     ],
+     "description": "NOx emissions binned into each source cell from the SR-emission-layer-2 share of every record's mass: sum over records r contained in cell c of annual[r]*is_NOx[r]*w_sr2[r]. w_sr2 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+    },
+    "E_NH3_L0": {
+     "type": "unknown",
+     "units": "short_ton/yr",
+     "shape": [
+      "src_cells"
+     ],
+     "description": "NH3 emissions binned into each source cell from the SR-emission-layer-0 share of every record's mass: sum over records r contained in cell c of annual[r]*is_NH3[r]*w_sr0[r]. w_sr0 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+    },
+    "E_NH3_L1": {
+     "type": "unknown",
+     "units": "short_ton/yr",
+     "shape": [
+      "src_cells"
+     ],
+     "description": "NH3 emissions binned into each source cell from the SR-emission-layer-1 share of every record's mass: sum over records r contained in cell c of annual[r]*is_NH3[r]*w_sr1[r]. w_sr1 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+    },
+    "E_NH3_L2": {
+     "type": "unknown",
+     "units": "short_ton/yr",
+     "shape": [
+      "src_cells"
+     ],
+     "description": "NH3 emissions binned into each source cell from the SR-emission-layer-2 share of every record's mass: sum over records r contained in cell c of annual[r]*is_NH3[r]*w_sr2[r]. w_sr2 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+    },
+    "E_SOx_L0": {
+     "type": "unknown",
+     "units": "short_ton/yr",
+     "shape": [
+      "src_cells"
+     ],
+     "description": "SOx emissions binned into each source cell from the SR-emission-layer-0 share of every record's mass: sum over records r contained in cell c of annual[r]*is_SOx[r]*w_sr0[r]. w_sr0 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+    },
+    "E_SOx_L1": {
+     "type": "unknown",
+     "units": "short_ton/yr",
+     "shape": [
+      "src_cells"
+     ],
+     "description": "SOx emissions binned into each source cell from the SR-emission-layer-1 share of every record's mass: sum over records r contained in cell c of annual[r]*is_SOx[r]*w_sr1[r]. w_sr1 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+    },
+    "E_SOx_L2": {
+     "type": "unknown",
+     "units": "short_ton/yr",
+     "shape": [
+      "src_cells"
+     ],
+     "description": "SOx emissions binned into each source cell from the SR-emission-layer-2 share of every record's mass: sum over records r contained in cell c of annual[r]*is_SOx[r]*w_sr2[r]. w_sr2 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+    },
+    "E_PM25_L0": {
+     "type": "unknown",
+     "units": "short_ton/yr",
+     "shape": [
+      "src_cells"
+     ],
+     "description": "PM25 emissions binned into each source cell from the SR-emission-layer-0 share of every record's mass: sum over records r contained in cell c of annual[r]*is_PM25[r]*w_sr0[r]. w_sr0 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+    },
+    "E_PM25_L1": {
+     "type": "unknown",
+     "units": "short_ton/yr",
+     "shape": [
+      "src_cells"
+     ],
+     "description": "PM25 emissions binned into each source cell from the SR-emission-layer-1 share of every record's mass: sum over records r contained in cell c of annual[r]*is_PM25[r]*w_sr1[r]. w_sr1 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+    },
+    "E_PM25_L2": {
+     "type": "unknown",
+     "units": "short_ton/yr",
+     "shape": [
+      "src_cells"
+     ],
+     "description": "PM25 emissions binned into each source cell from the SR-emission-layer-2 share of every record's mass: sum over records r contained in cell c of annual[r]*is_PM25[r]*w_sr2[r]. w_sr2 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+    },
+    "conc_SOA_L0": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Per-receptor secondary organic aerosol response from the emissions that reach layer 0: sum_s SR_SOA_L0[s,rcv]*E_VOC_L0[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+    },
+    "conc_SOA_L1": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Per-receptor secondary organic aerosol response from the emissions that reach layer 1: sum_s SR_SOA_L1[s,rcv]*E_VOC_L1[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+    },
+    "conc_SOA_L2": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Per-receptor secondary organic aerosol response from the emissions that reach layer 2: sum_s SR_SOA_L2[s,rcv]*E_VOC_L2[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+    },
+    "conc_pNO3_L0": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Per-receptor particulate nitrate response from the emissions that reach layer 0: sum_s SR_pNO3_L0[s,rcv]*E_NOx_L0[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+    },
+    "conc_pNO3_L1": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Per-receptor particulate nitrate response from the emissions that reach layer 1: sum_s SR_pNO3_L1[s,rcv]*E_NOx_L1[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+    },
+    "conc_pNO3_L2": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Per-receptor particulate nitrate response from the emissions that reach layer 2: sum_s SR_pNO3_L2[s,rcv]*E_NOx_L2[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+    },
+    "conc_pNH4_L0": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Per-receptor particulate ammonium response from the emissions that reach layer 0: sum_s SR_pNH4_L0[s,rcv]*E_NH3_L0[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+    },
+    "conc_pNH4_L1": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Per-receptor particulate ammonium response from the emissions that reach layer 1: sum_s SR_pNH4_L1[s,rcv]*E_NH3_L1[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+    },
+    "conc_pNH4_L2": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Per-receptor particulate ammonium response from the emissions that reach layer 2: sum_s SR_pNH4_L2[s,rcv]*E_NH3_L2[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+    },
+    "conc_pSO4_L0": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Per-receptor particulate sulfate response from the emissions that reach layer 0: sum_s SR_pSO4_L0[s,rcv]*E_SOx_L0[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+    },
+    "conc_pSO4_L1": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Per-receptor particulate sulfate response from the emissions that reach layer 1: sum_s SR_pSO4_L1[s,rcv]*E_SOx_L1[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+    },
+    "conc_pSO4_L2": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Per-receptor particulate sulfate response from the emissions that reach layer 2: sum_s SR_pSO4_L2[s,rcv]*E_SOx_L2[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+    },
+    "conc_PrimaryPM25_L0": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Per-receptor primary PM2.5 response from the emissions that reach layer 0: sum_s SR_PrimaryPM25_L0[s,rcv]*E_PM25_L0[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+    },
+    "conc_PrimaryPM25_L1": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Per-receptor primary PM2.5 response from the emissions that reach layer 1: sum_s SR_PrimaryPM25_L1[s,rcv]*E_PM25_L1[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+    },
+    "conc_PrimaryPM25_L2": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Per-receptor primary PM2.5 response from the emissions that reach layer 2: sum_s SR_PrimaryPM25_L2[s,rcv]*E_PM25_L2[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+    },
+    "conc_SOA": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Per-receptor concentration response from the secondary organic aerosol pathway, summed over the three SR emission layers: conc_SOA_L0 + conc_SOA_L1 + conc_SOA_L2. The layer split is where plume rise shows up in the answer."
+    },
+    "conc_pNO3": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Per-receptor concentration response from the particulate nitrate pathway, summed over the three SR emission layers: conc_pNO3_L0 + conc_pNO3_L1 + conc_pNO3_L2. The layer split is where plume rise shows up in the answer."
+    },
+    "conc_pNH4": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Per-receptor concentration response from the particulate ammonium pathway, summed over the three SR emission layers: conc_pNH4_L0 + conc_pNH4_L1 + conc_pNH4_L2. The layer split is where plume rise shows up in the answer."
+    },
+    "conc_pSO4": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Per-receptor concentration response from the particulate sulfate pathway, summed over the three SR emission layers: conc_pSO4_L0 + conc_pSO4_L1 + conc_pSO4_L2. The layer split is where plume rise shows up in the answer."
+    },
+    "conc_PrimaryPM25": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Per-receptor concentration response from the primary PM2.5 pathway, summed over the three SR emission layers: conc_PrimaryPM25_L0 + conc_PrimaryPM25_L1 + conc_PrimaryPM25_L2. The layer split is where plume rise shows up in the answer."
+    },
+    "TotalPM25": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Total PM2.5 concentration at each receptor: fact*(conc_SOA+conc_pNO3+conc_pNH4+conc_pSO4+conc_PrimaryPM25)."
+    },
+    "pm_SOA": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Reported SOA PM2.5 component at each receptor: fact*conc_SOA."
+    },
+    "pm_pNO3": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Reported pNO3 PM2.5 component at each receptor: fact*conc_pNO3."
+    },
+    "pm_pNH4": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Reported pNH4 PM2.5 component at each receptor: fact*conc_pNH4."
+    },
+    "pm_pSO4": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Reported pSO4 PM2.5 component at each receptor: fact*conc_pSO4."
+    },
+    "pm_PrimaryPM25": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Reported PrimaryPM25 PM2.5 component at each receptor: fact*conc_PrimaryPM25."
+    },
+    "deathsK": {
+     "type": "unknown",
+     "units": "1",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Attributable deaths at each receptor (Krewski RR 1.06): (exp(log(rr)/10*TotalPM25)-1)*TotalPop*pop_scale*MortalityRate/100000*mort_scale. TotalPop/MortalityRate indexed on the rcv range = the [0:52411] prefix slice."
+    },
+    "deathsL": {
+     "type": "unknown",
+     "units": "1",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Attributable deaths at each receptor (Lepeule RR 1.14): (exp(log(rr)/10*TotalPM25)-1)*TotalPop*pop_scale*MortalityRate/100000*mort_scale. TotalPop/MortalityRate indexed on the rcv range = the [0:52411] prefix slice."
+    },
+    "rcv_cx": {
+     "type": "unknown",
+     "units": "m",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Receptor cell-centroid easting (W+E)/2 in LCC metres."
+    },
+    "rcv_cy": {
+     "type": "unknown",
+     "units": "m",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Receptor cell-centroid northing (S+N)/2 in LCC metres."
+    },
+    "rcv_W": {
+     "type": "unknown",
+     "units": "m",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Receptor cell rectangle west edge in LCC metres: the [0:52411] prefix of the full-grid W. Written so a run's output store carries the geometry its fields are over \u2014 a field over rcv_cells is not drawable without it."
+    },
+    "rcv_S": {
+     "type": "unknown",
+     "units": "m",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Receptor cell rectangle south edge in LCC metres: the [0:52411] prefix of the full-grid S. Written so a run's output store carries the geometry its fields are over \u2014 a field over rcv_cells is not drawable without it."
+    },
+    "rcv_E": {
+     "type": "unknown",
+     "units": "m",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Receptor cell rectangle east edge in LCC metres: the [0:52411] prefix of the full-grid E. Written so a run's output store carries the geometry its fields are over \u2014 a field over rcv_cells is not drawable without it."
+    },
+    "rcv_N": {
+     "type": "unknown",
+     "units": "m",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Receptor cell rectangle north edge in LCC metres: the [0:52411] prefix of the full-grid N. Written so a run's output store carries the geometry its fields are over \u2014 a field over rcv_cells is not drawable without it."
+    }
+   },
+   "equations": [
+    {
+     "lhs": "X",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -2106,15 +2813,11 @@
         }
        ]
       }
-     },
-     "description": "Lambert-conformal-conic forward-x of the raw emission coordinate (== lambert_conformal_forward_x expanded to trig). Projected at BUILD time by the general-eval coordinate path (Phase 5 Part A) \u2014 the caller supplies only raw emis_lon/emis_lat."
+     }
     },
-    "Y": {
-     "type": "observed",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "Y",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -3040,16 +3743,11 @@
         }
        ]
       }
-     },
-     "description": "Lambert-conformal-conic forward-y of the raw emission coordinate (== lambert_conformal_forward_y expanded to trig). Projected at BUILD time by the general-eval coordinate path (Phase 5 Part A) \u2014 the caller supplies only raw emis_lon/emis_lat."
+     }
     },
-    "is_VOC": {
-     "type": "observed",
-     "units": "1",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "is_VOC",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -3529,16 +4227,11 @@
         0.0
        ]
       }
-     },
-     "description": "1 if the record's pollutant code is a VOC-class code (STEP 0.6 map), else 0."
+     }
     },
-    "is_NOx": {
-     "type": "observed",
-     "units": "1",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "is_NOx",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -3615,16 +4308,11 @@
         0.0
        ]
       }
-     },
-     "description": "1 if the record's pollutant code is a NOx-class code (STEP 0.6 map), else 0."
+     }
     },
-    "is_NH3": {
-     "type": "observed",
-     "units": "1",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "is_NH3",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -3657,16 +4345,11 @@
         0.0
        ]
       }
-     },
-     "description": "1 if the record's pollutant code is a NH3-class code (STEP 0.6 map), else 0."
+     }
     },
-    "is_SOx": {
-     "type": "observed",
-     "units": "1",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "is_SOx",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -3699,16 +4382,11 @@
         0.0
        ]
       }
-     },
-     "description": "1 if the record's pollutant code is a SOx-class code (STEP 0.6 map), else 0."
+     }
     },
-    "is_PM25": {
-     "type": "observed",
-     "units": "1",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "is_PM25",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -3967,16 +4645,11 @@
         0.0
        ]
       }
-     },
-     "description": "1 if the record's pollutant code is a PM25-class code (STEP 0.6 map), else 0."
+     }
     },
-    "stk_height": {
-     "type": "observed",
-     "units": "m",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "stk_height",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -4027,16 +4700,11 @@
         0.0
        ]
       }
-     },
-     "description": "Stack height in metres, from the raw FF10 column (col 17, feet). TWO conditionings, both measured against the delivered arrays rather than assumed. (a) UNITS: the loader variable declares its FF10 column's own unit and NO `unit_conversion` \u2014 see format gap G8; the conversion is stated here, at the one place the value is read, so it happens exactly once whatever a binding does at the provider seam. (b) BLANKS: a blank FF10 numeric field is delivered as NaN, and `record_filter` does not drop those records because a stack without this column is still a real emission record. InMAP reads the same blank as Go's zero value, so `ifelse(x == x, ., 0)` \u2014 false only for NaN \u2014 reproduces that. Left unguarded a single NaN would propagate through the whole branch tree and silently land the record in SR layer 0."
+     }
     },
-    "stk_diam": {
-     "type": "observed",
-     "units": "m",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "stk_diam",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -4087,16 +4755,11 @@
         0.0
        ]
       }
-     },
-     "description": "Stack inner diameter in metres, from the raw FF10 column (col 18, feet). TWO conditionings, both measured against the delivered arrays rather than assumed. (a) UNITS: the loader variable declares its FF10 column's own unit and NO `unit_conversion` \u2014 see format gap G8; the conversion is stated here, at the one place the value is read, so it happens exactly once whatever a binding does at the provider seam. (b) BLANKS: a blank FF10 numeric field is delivered as NaN, and `record_filter` does not drop those records because a stack without this column is still a real emission record. InMAP reads the same blank as Go's zero value, so `ifelse(x == x, ., 0)` \u2014 false only for NaN \u2014 reproduces that. Left unguarded a single NaN would propagate through the whole branch tree and silently land the record in SR layer 0."
+     }
     },
-    "stk_temp": {
-     "type": "observed",
-     "units": "K",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "stk_temp",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -4159,16 +4822,11 @@
         0.0
        ]
       }
-     },
-     "description": "Stack exit temperature in kelvin, from the raw FF10 column (col 19, degrees Fahrenheit): (F - 32)*5/9 + 273.15. TWO conditionings, both measured against the delivered arrays rather than assumed. (a) UNITS: the loader variable declares its FF10 column's own unit and NO `unit_conversion` \u2014 see format gap G8; the conversion is stated here, at the one place the value is read, so it happens exactly once whatever a binding does at the provider seam. (b) BLANKS: a blank FF10 numeric field is delivered as NaN, and `record_filter` does not drop those records because a stack without this column is still a real emission record. InMAP reads the same blank as Go's zero value, so `ifelse(x == x, ., 0)` \u2014 false only for NaN \u2014 reproduces that. Left unguarded a single NaN would propagate through the whole branch tree and silently land the record in SR layer 0."
+     }
     },
-    "stk_vel": {
-     "type": "observed",
-     "units": "m/s",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "stk_vel",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -4219,16 +4877,11 @@
         0.0
        ]
       }
-     },
-     "description": "Stack exit velocity in metres per second, from the raw FF10 column (col 21, feet per second). TWO conditionings, both measured against the delivered arrays rather than assumed. (a) UNITS: the loader variable declares its FF10 column's own unit and NO `unit_conversion` \u2014 see format gap G8; the conversion is stated here, at the one place the value is read, so it happens exactly once whatever a binding does at the provider seam. (b) BLANKS: a blank FF10 numeric field is delivered as NaN, and `record_filter` does not drop those records because a stack without this column is still a real emission record. InMAP reads the same blank as Go's zero value, so `ifelse(x == x, ., 0)` \u2014 false only for NaN \u2014 reproduces that. Left unguarded a single NaN would propagate through the whole branch tree and silently land the record in SR layer 0."
+     }
     },
-    "stack_layer": {
-     "type": "observed",
-     "units": "1",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "stack_layer",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -4502,16 +5155,11 @@
         }
        ]
       }
-     },
-     "description": "Model layer the STACK TOP sits in, for the source cell that contains the record: InMAP's findLayer (sort.SearchFloat64s on the staggered LayerHeight column, minus one unless zero), which with LayerHeight[0]=0 is exactly the count of layer bottoms strictly below the stack. FOUR indicators is enough and is asserted by the inventory: the tallest EGU stack is 316.38 m and the lowest layer-4 bottom is 348.44 m, so the stack layer is always in {0,1,2,3}; four terms would still cover the tallest chimney on Earth (~419.7 m, against a lowest layer-5 bottom of 503.89 m). The leading containment indicator is the same spatial join E_* uses, so this picks the record's own cell and is 0 for a record outside the grid. IN-BOUNDS ARGUMENT, load-bearing: a sum of four indicators is at most 4, so the largest LayerHeight offset any of these observeds reaches is 4*52411 + 52410 = 262054 < 596444 = N_ALL. No clamp is needed, and none should be added on the assumption that one is missing \u2014 but do not widen the sum without redoing this arithmetic, because an out-of-range const-array gather is a hard error in all three bindings (Rust returned a silent 0.0 until EarthSciAST 5af33a14 made it raise E_TREEWALK_CONSTARRAY_OOB like the others)."
+     }
     },
-    "air_temp": {
-     "type": "observed",
-     "units": "K",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "air_temp",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -4653,16 +5301,11 @@
         }
        ]
       }
-     },
-     "description": "Meteorology at the stack top: air temperature, read in the record's own source cell at model layer `stack_layer` via the flat layer-major offset `stack_layer[r]*N_SRC + c`; 0 for a record outside the grid."
+     }
     },
-    "wind_speed": {
-     "type": "observed",
-     "units": "m/s",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "wind_speed",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -4804,16 +5447,11 @@
         }
        ]
       }
-     },
-     "description": "Meteorology at the stack top: wind speed, read in the record's own source cell at model layer `stack_layer` via the flat layer-major offset `stack_layer[r]*N_SRC + c`; 0 for a record outside the grid."
+     }
     },
-    "wind_inv": {
-     "type": "observed",
-     "units": "s/m",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "wind_inv",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -4955,16 +5593,11 @@
         }
        ]
       }
-     },
-     "description": "Meteorology at the stack top: the cell mean of 1/u, read in the record's own source cell at model layer `stack_layer` via the flat layer-major offset `stack_layer[r]*N_SRC + c`; 0 for a record outside the grid."
+     }
     },
-    "wind_m13": {
-     "type": "observed",
-     "units": "(m/s)^(-1/3)",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "wind_m13",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -5106,16 +5739,11 @@
         }
        ]
       }
-     },
-     "description": "Meteorology at the stack top: the cell mean of u^(-1/3), read in the record's own source cell at model layer `stack_layer` via the flat layer-major offset `stack_layer[r]*N_SRC + c`; 0 for a record outside the grid."
+     }
     },
-    "wind_m14": {
-     "type": "observed",
-     "units": "(m/s)^-1.4",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "wind_m14",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -5257,16 +5885,11 @@
         }
        ]
       }
-     },
-     "description": "Meteorology at the stack top: the cell mean of u^(-1.4), read in the record's own source cell at model layer `stack_layer` via the flat layer-major offset `stack_layer[r]*N_SRC + c`; 0 for a record outside the grid."
+     }
     },
-    "s_class": {
-     "type": "observed",
-     "units": "1",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "s_class",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -5408,16 +6031,11 @@
         }
        ]
       }
-     },
-     "description": "Meteorology at the stack top: the stability class indicator (>0.5 = stable), read in the record's own source cell at model layer `stack_layer` via the flat layer-major offset `stack_layer[r]*N_SRC + c`; 0 for a record outside the grid."
+     }
     },
-    "s_param": {
-     "type": "observed",
-     "units": "1/s^2",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "s_param",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -5559,16 +6177,11 @@
         }
        ]
       }
-     },
-     "description": "Meteorology at the stack top: the stability parameter S1 = (g/theta) dtheta/dz, read in the record's own source cell at model layer `stack_layer` via the flat layer-major offset `stack_layer[r]*N_SRC + c`; 0 for a record outside the grid."
+     }
     },
-    "temp_diff": {
-     "type": "observed",
-     "units": "1",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "temp_diff",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -5662,16 +6275,11 @@
         }
        ]
       }
-     },
-     "description": "The symmetrised stack/air temperature contrast 2(Ts-Ta)/(Ts+Ta) that calcDeltaHPrecomputed uses \u2014 NOT calcDeltaH's (Ts-Ta)/Ts; InMAP calls the precomputed one. The denominator is guarded rather than the whole quotient branched, because `ifelse` is EAGER inside an aggregate in every binding and Python's division is plain scalar division, so a 1/0 in an UNTAKEN branch would still abort the build. Guarding gives 0/1 = 0 when Ts == Ta, which is exactly InMAP's special case, with no second branch. A separate observed rather than an inlined subtree because there is no CSE on the observed-field path: repeating it would cost repeated evaluations, not just bytes."
+     }
     },
-    "buoy_flux": {
-     "type": "observed",
-     "units": "m^4/s^3",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "buoy_flux",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -5725,16 +6333,11 @@
         }
        ]
       }
-     },
-     "description": "Buoyancy flux F = g * temp_diff * vs * (ds/2)^2, with g = 9.80665 (plumerise.g). Separate for the same no-CSE reason as `temp_diff`: the branch tree in `delta_h` reads it three times."
+     }
     },
-    "delta_h": {
-     "type": "observed",
-     "units": "m",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "delta_h",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -6075,16 +6678,11 @@
         }
        ]
       }
-     },
-     "description": "Plume rise above the stack top, ctessum/atmos calcDeltaHPrecomputed branch for branch: momentum-dominated when Ts-Ta < 50 K and u < vs and vs > 10 m/s; otherwise buoyant, stable (29 (F/S1)^(1/3) u^(-1/3)) when SClass > 0.5 and S1 != 0, unstable (7.4 (F h^2)^(1/3) u^-1) otherwise, and 0 when F <= 0. THREE spellings here are load-bearing and were each shown necessary against all three bindings. (1) The cube-root exponent is the literal 0.333333333, not 1/3 \u2014 InMAP hard-codes it \u2014 and the power operator must be spelled `^`: Rust rejects `pow`/`**` as unlowered, while Julia and Python silently accept `pow`, so a typo would pass two bindings and fail the third. (2) EVERY fractional-power base is wrapped in max(., 0). `ifelse` is eager inside an aggregate everywhere, so the untaken branch is evaluated too, and on a negative base Julia raises DomainError, Rust yields NaN, and Python returns the REAL PART of a complex result behind a ComplexWarning \u2014 a plausible wrong number, the worst of the three. The clamp is a no-op on the branch actually taken. (3) `s_param == 0` is tested by NESTING rather than by an `and`, which reproduces Go's three-way stable guard (sClass > 0.5 && s1 != 0 && F > 0) exactly."
+     }
     },
-    "plume_height": {
-     "type": "observed",
-     "units": "m",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "plume_height",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -6117,16 +6715,11 @@
         }
        ]
       }
-     },
-     "description": "Height the plume centreline reaches: stack height + delta_h."
+     }
     },
-    "plume_model_layer": {
-     "type": "observed",
-     "units": "1",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "plume_model_layer",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -6496,16 +7089,11 @@
         }
        ]
       }
-     },
-     "description": "The MODEL layer the plume centreline reaches, SATURATED AT SR_MODEL_L2 = 6. findLayer again (a sum of indicators against the staggered layer BOTTOMS, which with LayerHeight[0] = 0 counts the bottoms strictly below the plume), now on plume_height instead of stack height, and with InMAP's zero-stack rule folded in: a record with stack height 0 never enters IsPlumeIn at all (`if e.Height != 0` in sr.Reader.Concentrations) and emits at ground level, hence the outer ifelse. SIX indicators, NOT more, and the saturation is the point rather than an approximation: sr.Reader.layerFracs maps model layer > SR_MODEL_L2 to SR layer 2 with weight 1 (its AboveTopErr branch, which the CLI downgrades to a log line), which is exactly what it maps model layer == SR_MODEL_L2 to, so capping the count at 6 folds the two branches into one and loses nothing. IN-BOUNDS ARGUMENT, load-bearing: a sum of six indicators is at most 6, so the largest offset reached here is 6*52411 + 52410 = 366876 < 596444 = N_ALL. Widening the sum past 6 would be WRONG as well as out-of-range-prone \u2014 model layer 8 is not at offset 8*N_SRC + c, because the flat layout switches to the 9324-cell coarse grid above layer 7. The leading containment indicator is the same spatial join E_* uses, so this picks the record's own cell and is 0 for a record outside the grid."
+     }
     },
-    "frac_lo": {
-     "type": "observed",
-     "units": "1",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "frac_lo",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -6835,16 +7423,11 @@
         }
        ]
       }
-     },
-     "description": "Interpolation fraction for a plume whose model layer falls STRICTLY BETWEEN SR layers 0 and 1 \u2014 i.e. model layer 1 or 2, the only two strictly between 0 and SR_MODEL_L1 = 3. frac = (plume_height - below)/(above - below), with `below` and `above` the CELL-CENTRE heights of model layers 0 and SR_MODEL_L1 over the record's own source cell: LayerHeight[l*N_SRC + c] + 0.5*Dz[l*N_SRC + c]. Centres, not layer bottoms \u2014 layerFracs reads them out of sr.d.VerticalProfile, which fills height[i] = c.LayerHeight + c.Dz/2. The denominator is guarded rather than the quotient branched, because `ifelse` is EAGER inside an aggregate in every binding. Evaluated for EVERY record, including the ones this branch does not own; w_sr0/w_sr1/w_sr2 multiply it by zero there, and the guard keeps it finite so an eager binding has nothing to trip over. THE INTERPOLATION IS CORRECTED HERE, AND THAT IS DELIBERATE. InMAP's layerFracs returns `[]float64{frac, 1 - frac}` for `[]int{i, i+1}` \u2014 the LOWER SR layer gets `frac`, so a HIGHER plume puts MORE weight on the LOWER layer. That is a bug: it anti-correlates height with placement. This document gives the lower layer `1 - frac` and the upper `frac`, which is ordinary linear interpolation. It conserves mass either way, but conserving mass is NOT the same as leaving the answer alone: MEASURED at full scale, correcting it moves the national totals from 6936.106343 / 15640.080273 to 7022.724781 / 15835.993596, so InMAP's version \u2014 and the published tutorial that rests on it \u2014 runs about 1.25% low. THIS DOCUMENT THEREFORE DOES NOT REPRODUCE THE TUTORIAL'S TOTALS, BY DESIGN. Matching InMAP was the means of proving the pipeline, not the goal; that proof is complete (agreement with the live service to 8.9e-9 at reduced scale, where neither of InMAP's two plume-rise defects can fire), and carrying a known defect past it would mean publishing numbers known to be wrong."
+     }
     },
-    "frac_hi": {
-     "type": "observed",
-     "units": "1",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "frac_hi",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -7246,16 +7829,11 @@
         }
        ]
       }
-     },
-     "description": "Interpolation fraction for a plume whose model layer falls STRICTLY BETWEEN SR layers 1 and 2 \u2014 i.e. model layer 4 or 5, the only two strictly between SR_MODEL_L1 = 3 and SR_MODEL_L2 = 6. frac = (plume_height - below)/(above - below), with `below` and `above` the CELL-CENTRE heights of model layers SR_MODEL_L1 and SR_MODEL_L2 over the record's own source cell: LayerHeight[l*N_SRC + c] + 0.5*Dz[l*N_SRC + c]. Centres, not layer bottoms \u2014 layerFracs reads them out of sr.d.VerticalProfile, which fills height[i] = c.LayerHeight + c.Dz/2. The denominator is guarded rather than the quotient branched, because `ifelse` is EAGER inside an aggregate in every binding. Evaluated for EVERY record, including the ones this branch does not own; w_sr0/w_sr1/w_sr2 multiply it by zero there, and the guard keeps it finite so an eager binding has nothing to trip over. THE INTERPOLATION IS CORRECTED HERE, AND THAT IS DELIBERATE. InMAP's layerFracs returns `[]float64{frac, 1 - frac}` for `[]int{i, i+1}` \u2014 the LOWER SR layer gets `frac`, so a HIGHER plume puts MORE weight on the LOWER layer. That is a bug: it anti-correlates height with placement. This document gives the lower layer `1 - frac` and the upper `frac`, which is ordinary linear interpolation. It conserves mass either way, but conserving mass is NOT the same as leaving the answer alone: MEASURED at full scale, correcting it moves the national totals from 6936.106343 / 15640.080273 to 7022.724781 / 15835.993596, so InMAP's version \u2014 and the published tutorial that rests on it \u2014 runs about 1.25% low. THIS DOCUMENT THEREFORE DOES NOT REPRODUCE THE TUTORIAL'S TOTALS, BY DESIGN. Matching InMAP was the means of proving the pipeline, not the goal; that proof is complete (agreement with the live service to 8.9e-9 at reduced scale, where neither of InMAP's two plume-rise defects can fire), and carrying a known defect past it would mean publishing numbers known to be wrong."
+     }
     },
-    "w_sr0": {
-     "type": "observed",
-     "units": "1",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "w_sr0",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -7344,16 +7922,11 @@
         }
        ]
       }
-     },
-     "description": "THE ANSWER PLUME RISE EXISTS TO PRODUCE, part 1 of 3: the fraction of this record's mass that InMAP's sr.Reader.layerFracs charges to SR emission layer 0. w_sr0 + w_sr1 + w_sr2 == 1 for every record, so no mass is created or lost; a record is SPLIT across two SR layers whenever its model layer falls strictly between two entries of `layers` = [0, 3, 6], and lands wholly in one layer otherwise. Layer 0 takes a record whose plume never leaves model layer 0 (including every zero-height stack), plus the 1 - frac_lo share of one that stopped in model layer 1 or 2. Layer-by-layer, with M = plume_model_layer: M == 0 -> (1, 0, 0); M in {1, 2} -> (1 - frac_lo, frac_lo, 0); M == 3 -> (0, 1, 0); M in {4, 5} -> (0, 1 - frac_hi, frac_hi); M == 6 -> (0, 0, 1), which by saturation also covers every model layer above 6. A record outside the grid gets M == 0 and hence w_sr0 == 1, which charges nothing anywhere because the containment factor in every E_* aggregate is 0 for it. THE INTERPOLATION IS CORRECTED HERE, AND THAT IS DELIBERATE. InMAP's layerFracs returns `[]float64{frac, 1 - frac}` for `[]int{i, i+1}` \u2014 the LOWER SR layer gets `frac`, so a HIGHER plume puts MORE weight on the LOWER layer. That is a bug: it anti-correlates height with placement. This document gives the lower layer `1 - frac` and the upper `frac`, which is ordinary linear interpolation. It conserves mass either way, but conserving mass is NOT the same as leaving the answer alone: MEASURED at full scale, correcting it moves the national totals from 6936.106343 / 15640.080273 to 7022.724781 / 15835.993596, so InMAP's version \u2014 and the published tutorial that rests on it \u2014 runs about 1.25% low. THIS DOCUMENT THEREFORE DOES NOT REPRODUCE THE TUTORIAL'S TOTALS, BY DESIGN. Matching InMAP was the means of proving the pipeline, not the goal; that proof is complete (agreement with the live service to 8.9e-9 at reduced scale, where neither of InMAP's two plume-rise defects can fire), and carrying a known defect past it would mean publishing numbers known to be wrong."
+     }
     },
-    "w_sr1": {
-     "type": "observed",
-     "units": "1",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "w_sr1",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -7487,16 +8060,11 @@
         }
        ]
       }
-     },
-     "description": "THE ANSWER PLUME RISE EXISTS TO PRODUCE, part 2 of 3: the fraction of this record's mass that InMAP's sr.Reader.layerFracs charges to SR emission layer 1. w_sr0 + w_sr1 + w_sr2 == 1 for every record, so no mass is created or lost; a record is SPLIT across two SR layers whenever its model layer falls strictly between two entries of `layers` = [0, 3, 6], and lands wholly in one layer otherwise. Layer 1 takes all of a record that stopped in model layer 3 \u2014 an exact match against `layers`[1] \u2014 plus the frac_lo share of one in model layer 1 or 2 and the 1 - frac_hi share of one in model layer 4 or 5. Layer-by-layer, with M = plume_model_layer: M == 0 -> (1, 0, 0); M in {1, 2} -> (1 - frac_lo, frac_lo, 0); M == 3 -> (0, 1, 0); M in {4, 5} -> (0, 1 - frac_hi, frac_hi); M == 6 -> (0, 0, 1), which by saturation also covers every model layer above 6. A record outside the grid gets M == 0 and hence w_sr0 == 1, which charges nothing anywhere because the containment factor in every E_* aggregate is 0 for it. THE INTERPOLATION IS CORRECTED HERE, AND THAT IS DELIBERATE. InMAP's layerFracs returns `[]float64{frac, 1 - frac}` for `[]int{i, i+1}` \u2014 the LOWER SR layer gets `frac`, so a HIGHER plume puts MORE weight on the LOWER layer. That is a bug: it anti-correlates height with placement. This document gives the lower layer `1 - frac` and the upper `frac`, which is ordinary linear interpolation. It conserves mass either way, but conserving mass is NOT the same as leaving the answer alone: MEASURED at full scale, correcting it moves the national totals from 6936.106343 / 15640.080273 to 7022.724781 / 15835.993596, so InMAP's version \u2014 and the published tutorial that rests on it \u2014 runs about 1.25% low. THIS DOCUMENT THEREFORE DOES NOT REPRODUCE THE TUTORIAL'S TOTALS, BY DESIGN. Matching InMAP was the means of proving the pipeline, not the goal; that proof is complete (agreement with the live service to 8.9e-9 at reduced scale, where neither of InMAP's two plume-rise defects can fire), and carrying a known defect past it would mean publishing numbers known to be wrong."
+     }
     },
-    "w_sr2": {
-     "type": "observed",
-     "units": "1",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "w_sr2",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -7579,16 +8147,11 @@
         }
        ]
       }
-     },
-     "description": "THE ANSWER PLUME RISE EXISTS TO PRODUCE, part 3 of 3: the fraction of this record's mass that InMAP's sr.Reader.layerFracs charges to SR emission layer 2. w_sr0 + w_sr1 + w_sr2 == 1 for every record, so no mass is created or lost; a record is SPLIT across two SR layers whenever its model layer falls strictly between two entries of `layers` = [0, 3, 6], and lands wholly in one layer otherwise. Layer 2 takes all of a record at or above model layer 6 \u2014 an exact match against `layers`[2], or InMAP's AboveTopErr clamp, which plume_model_layer's saturation makes the same branch \u2014 plus the frac_hi share of one in model layer 4 or 5. Layer-by-layer, with M = plume_model_layer: M == 0 -> (1, 0, 0); M in {1, 2} -> (1 - frac_lo, frac_lo, 0); M == 3 -> (0, 1, 0); M in {4, 5} -> (0, 1 - frac_hi, frac_hi); M == 6 -> (0, 0, 1), which by saturation also covers every model layer above 6. A record outside the grid gets M == 0 and hence w_sr0 == 1, which charges nothing anywhere because the containment factor in every E_* aggregate is 0 for it. THE INTERPOLATION IS CORRECTED HERE, AND THAT IS DELIBERATE. InMAP's layerFracs returns `[]float64{frac, 1 - frac}` for `[]int{i, i+1}` \u2014 the LOWER SR layer gets `frac`, so a HIGHER plume puts MORE weight on the LOWER layer. That is a bug: it anti-correlates height with placement. This document gives the lower layer `1 - frac` and the upper `frac`, which is ordinary linear interpolation. It conserves mass either way, but conserving mass is NOT the same as leaving the answer alone: MEASURED at full scale, correcting it moves the national totals from 6936.106343 / 15640.080273 to 7022.724781 / 15835.993596, so InMAP's version \u2014 and the published tutorial that rests on it \u2014 runs about 1.25% low. THIS DOCUMENT THEREFORE DOES NOT REPRODUCE THE TUTORIAL'S TOTALS, BY DESIGN. Matching InMAP was the means of proving the pipeline, not the goal; that proof is complete (agreement with the live service to 8.9e-9 at reduced scale, where neither of InMAP's two plume-rise defects can fire), and carrying a known defect past it would mean publishing numbers known to be wrong."
+     }
     },
-    "sr_lower": {
-     "type": "observed",
-     "units": "1",
-     "shape": [
-      "emis_records"
-     ],
-     "expression": {
+    {
+     "lhs": "sr_lower",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "r"
@@ -7690,16 +8253,11 @@
         }
        ]
       }
-     },
-     "description": "The LOWER of the (at most two) SR emission layers this record's mass is charged to \u2014 the index layerFracs returns first. 0 for a plume at or below model layer 2, 1 for model layers 3 to 5, 2 for model layer 6 and above. It is an integer-valued label, so it is what the cross-binding contract can compare EXACTLY (the weights beside it are floats); together with w_sr<n> it reconstructs the whole assignment, since the upper layer, when there is one, is always sr_lower + 1. It replaces the old single-layer `plume_layer`, which stopped describing the model the moment a record could be split across two layers."
+     }
     },
-    "E_VOC_L0": {
-     "type": "observed",
-     "units": "short_ton/yr",
-     "shape": [
-      "src_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "E_VOC_L0",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "c"
@@ -7843,16 +8401,11 @@
         }
        ]
       }
-     },
-     "description": "VOC emissions binned into each source cell from the SR-emission-layer-0 share of every record's mass: sum over records r contained in cell c of annual[r]*is_VOC[r]*w_sr0[r]. w_sr0 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+     }
     },
-    "E_VOC_L1": {
-     "type": "observed",
-     "units": "short_ton/yr",
-     "shape": [
-      "src_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "E_VOC_L1",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "c"
@@ -7996,16 +8549,11 @@
         }
        ]
       }
-     },
-     "description": "VOC emissions binned into each source cell from the SR-emission-layer-1 share of every record's mass: sum over records r contained in cell c of annual[r]*is_VOC[r]*w_sr1[r]. w_sr1 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+     }
     },
-    "E_VOC_L2": {
-     "type": "observed",
-     "units": "short_ton/yr",
-     "shape": [
-      "src_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "E_VOC_L2",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "c"
@@ -8149,16 +8697,11 @@
         }
        ]
       }
-     },
-     "description": "VOC emissions binned into each source cell from the SR-emission-layer-2 share of every record's mass: sum over records r contained in cell c of annual[r]*is_VOC[r]*w_sr2[r]. w_sr2 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+     }
     },
-    "E_NOx_L0": {
-     "type": "observed",
-     "units": "short_ton/yr",
-     "shape": [
-      "src_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "E_NOx_L0",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "c"
@@ -8302,16 +8845,11 @@
         }
        ]
       }
-     },
-     "description": "NOx emissions binned into each source cell from the SR-emission-layer-0 share of every record's mass: sum over records r contained in cell c of annual[r]*is_NOx[r]*w_sr0[r]. w_sr0 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+     }
     },
-    "E_NOx_L1": {
-     "type": "observed",
-     "units": "short_ton/yr",
-     "shape": [
-      "src_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "E_NOx_L1",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "c"
@@ -8455,16 +8993,11 @@
         }
        ]
       }
-     },
-     "description": "NOx emissions binned into each source cell from the SR-emission-layer-1 share of every record's mass: sum over records r contained in cell c of annual[r]*is_NOx[r]*w_sr1[r]. w_sr1 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+     }
     },
-    "E_NOx_L2": {
-     "type": "observed",
-     "units": "short_ton/yr",
-     "shape": [
-      "src_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "E_NOx_L2",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "c"
@@ -8608,16 +9141,11 @@
         }
        ]
       }
-     },
-     "description": "NOx emissions binned into each source cell from the SR-emission-layer-2 share of every record's mass: sum over records r contained in cell c of annual[r]*is_NOx[r]*w_sr2[r]. w_sr2 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+     }
     },
-    "E_NH3_L0": {
-     "type": "observed",
-     "units": "short_ton/yr",
-     "shape": [
-      "src_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "E_NH3_L0",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "c"
@@ -8761,16 +9289,11 @@
         }
        ]
       }
-     },
-     "description": "NH3 emissions binned into each source cell from the SR-emission-layer-0 share of every record's mass: sum over records r contained in cell c of annual[r]*is_NH3[r]*w_sr0[r]. w_sr0 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+     }
     },
-    "E_NH3_L1": {
-     "type": "observed",
-     "units": "short_ton/yr",
-     "shape": [
-      "src_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "E_NH3_L1",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "c"
@@ -8914,16 +9437,11 @@
         }
        ]
       }
-     },
-     "description": "NH3 emissions binned into each source cell from the SR-emission-layer-1 share of every record's mass: sum over records r contained in cell c of annual[r]*is_NH3[r]*w_sr1[r]. w_sr1 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+     }
     },
-    "E_NH3_L2": {
-     "type": "observed",
-     "units": "short_ton/yr",
-     "shape": [
-      "src_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "E_NH3_L2",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "c"
@@ -9067,16 +9585,11 @@
         }
        ]
       }
-     },
-     "description": "NH3 emissions binned into each source cell from the SR-emission-layer-2 share of every record's mass: sum over records r contained in cell c of annual[r]*is_NH3[r]*w_sr2[r]. w_sr2 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+     }
     },
-    "E_SOx_L0": {
-     "type": "observed",
-     "units": "short_ton/yr",
-     "shape": [
-      "src_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "E_SOx_L0",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "c"
@@ -9220,16 +9733,11 @@
         }
        ]
       }
-     },
-     "description": "SOx emissions binned into each source cell from the SR-emission-layer-0 share of every record's mass: sum over records r contained in cell c of annual[r]*is_SOx[r]*w_sr0[r]. w_sr0 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+     }
     },
-    "E_SOx_L1": {
-     "type": "observed",
-     "units": "short_ton/yr",
-     "shape": [
-      "src_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "E_SOx_L1",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "c"
@@ -9373,16 +9881,11 @@
         }
        ]
       }
-     },
-     "description": "SOx emissions binned into each source cell from the SR-emission-layer-1 share of every record's mass: sum over records r contained in cell c of annual[r]*is_SOx[r]*w_sr1[r]. w_sr1 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+     }
     },
-    "E_SOx_L2": {
-     "type": "observed",
-     "units": "short_ton/yr",
-     "shape": [
-      "src_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "E_SOx_L2",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "c"
@@ -9526,16 +10029,11 @@
         }
        ]
       }
-     },
-     "description": "SOx emissions binned into each source cell from the SR-emission-layer-2 share of every record's mass: sum over records r contained in cell c of annual[r]*is_SOx[r]*w_sr2[r]. w_sr2 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+     }
     },
-    "E_PM25_L0": {
-     "type": "observed",
-     "units": "short_ton/yr",
-     "shape": [
-      "src_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "E_PM25_L0",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "c"
@@ -9679,16 +10177,11 @@
         }
        ]
       }
-     },
-     "description": "PM25 emissions binned into each source cell from the SR-emission-layer-0 share of every record's mass: sum over records r contained in cell c of annual[r]*is_PM25[r]*w_sr0[r]. w_sr0 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+     }
     },
-    "E_PM25_L1": {
-     "type": "observed",
-     "units": "short_ton/yr",
-     "shape": [
-      "src_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "E_PM25_L1",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "c"
@@ -9832,16 +10325,11 @@
         }
        ]
       }
-     },
-     "description": "PM25 emissions binned into each source cell from the SR-emission-layer-1 share of every record's mass: sum over records r contained in cell c of annual[r]*is_PM25[r]*w_sr1[r]. w_sr1 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+     }
     },
-    "E_PM25_L2": {
-     "type": "observed",
-     "units": "short_ton/yr",
-     "shape": [
-      "src_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "E_PM25_L2",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "c"
@@ -9985,16 +10473,11 @@
         }
        ]
       }
-     },
-     "description": "PM25 emissions binned into each source cell from the SR-emission-layer-2 share of every record's mass: sum over records r contained in cell c of annual[r]*is_PM25[r]*w_sr2[r]. w_sr2 is InMAP's sr.Reader.layerFracs weight, so a record whose plume stops between two entries of `layers` = [0, 3, 6] contributes to TWO of these three aggregates rather than one. The containment ifelse MUST stay the FIRST ifelse in this body: the rewrite hands the first ifelse's condition to its containment parser, and getting that wrong drops the pathway out of the SR gate silently. The layer weight is now a plain per-record FACTOR rather than a second ifelse, which leaves this body with exactly one ifelse in it."
+     }
     },
-    "conc_SOA_L0": {
-     "type": "observed",
-     "units": "ug/m^3",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "conc_SOA_L0",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -10032,16 +10515,11 @@
         }
        ]
       }
-     },
-     "description": "Per-receptor secondary organic aerosol response from the emissions that reach layer 0: sum_s SR_SOA_L0[s,rcv]*E_VOC_L0[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+     }
     },
-    "conc_SOA_L1": {
-     "type": "observed",
-     "units": "ug/m^3",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "conc_SOA_L1",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -10079,16 +10557,11 @@
         }
        ]
       }
-     },
-     "description": "Per-receptor secondary organic aerosol response from the emissions that reach layer 1: sum_s SR_SOA_L1[s,rcv]*E_VOC_L1[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+     }
     },
-    "conc_SOA_L2": {
-     "type": "observed",
-     "units": "ug/m^3",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "conc_SOA_L2",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -10126,16 +10599,11 @@
         }
        ]
       }
-     },
-     "description": "Per-receptor secondary organic aerosol response from the emissions that reach layer 2: sum_s SR_SOA_L2[s,rcv]*E_VOC_L2[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+     }
     },
-    "conc_pNO3_L0": {
-     "type": "observed",
-     "units": "ug/m^3",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "conc_pNO3_L0",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -10173,16 +10641,11 @@
         }
        ]
       }
-     },
-     "description": "Per-receptor particulate nitrate response from the emissions that reach layer 0: sum_s SR_pNO3_L0[s,rcv]*E_NOx_L0[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+     }
     },
-    "conc_pNO3_L1": {
-     "type": "observed",
-     "units": "ug/m^3",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "conc_pNO3_L1",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -10220,16 +10683,11 @@
         }
        ]
       }
-     },
-     "description": "Per-receptor particulate nitrate response from the emissions that reach layer 1: sum_s SR_pNO3_L1[s,rcv]*E_NOx_L1[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+     }
     },
-    "conc_pNO3_L2": {
-     "type": "observed",
-     "units": "ug/m^3",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "conc_pNO3_L2",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -10267,16 +10725,11 @@
         }
        ]
       }
-     },
-     "description": "Per-receptor particulate nitrate response from the emissions that reach layer 2: sum_s SR_pNO3_L2[s,rcv]*E_NOx_L2[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+     }
     },
-    "conc_pNH4_L0": {
-     "type": "observed",
-     "units": "ug/m^3",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "conc_pNH4_L0",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -10314,16 +10767,11 @@
         }
        ]
       }
-     },
-     "description": "Per-receptor particulate ammonium response from the emissions that reach layer 0: sum_s SR_pNH4_L0[s,rcv]*E_NH3_L0[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+     }
     },
-    "conc_pNH4_L1": {
-     "type": "observed",
-     "units": "ug/m^3",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "conc_pNH4_L1",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -10361,16 +10809,11 @@
         }
        ]
       }
-     },
-     "description": "Per-receptor particulate ammonium response from the emissions that reach layer 1: sum_s SR_pNH4_L1[s,rcv]*E_NH3_L1[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+     }
     },
-    "conc_pNH4_L2": {
-     "type": "observed",
-     "units": "ug/m^3",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "conc_pNH4_L2",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -10408,16 +10851,11 @@
         }
        ]
       }
-     },
-     "description": "Per-receptor particulate ammonium response from the emissions that reach layer 2: sum_s SR_pNH4_L2[s,rcv]*E_NH3_L2[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+     }
     },
-    "conc_pSO4_L0": {
-     "type": "observed",
-     "units": "ug/m^3",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "conc_pSO4_L0",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -10455,16 +10893,11 @@
         }
        ]
       }
-     },
-     "description": "Per-receptor particulate sulfate response from the emissions that reach layer 0: sum_s SR_pSO4_L0[s,rcv]*E_SOx_L0[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+     }
     },
-    "conc_pSO4_L1": {
-     "type": "observed",
-     "units": "ug/m^3",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "conc_pSO4_L1",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -10502,16 +10935,11 @@
         }
        ]
       }
-     },
-     "description": "Per-receptor particulate sulfate response from the emissions that reach layer 1: sum_s SR_pSO4_L1[s,rcv]*E_SOx_L1[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+     }
     },
-    "conc_pSO4_L2": {
-     "type": "observed",
-     "units": "ug/m^3",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "conc_pSO4_L2",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -10549,16 +10977,11 @@
         }
        ]
       }
-     },
-     "description": "Per-receptor particulate sulfate response from the emissions that reach layer 2: sum_s SR_pSO4_L2[s,rcv]*E_SOx_L2[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+     }
     },
-    "conc_PrimaryPM25_L0": {
-     "type": "observed",
-     "units": "ug/m^3",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "conc_PrimaryPM25_L0",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -10596,16 +11019,11 @@
         }
        ]
       }
-     },
-     "description": "Per-receptor primary PM2.5 response from the emissions that reach layer 0: sum_s SR_PrimaryPM25_L0[s,rcv]*E_PM25_L0[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+     }
     },
-    "conc_PrimaryPM25_L1": {
-     "type": "observed",
-     "units": "ug/m^3",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "conc_PrimaryPM25_L1",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -10643,16 +11061,11 @@
         }
        ]
       }
-     },
-     "description": "Per-receptor primary PM2.5 response from the emissions that reach layer 1: sum_s SR_PrimaryPM25_L1[s,rcv]*E_PM25_L1[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+     }
     },
-    "conc_PrimaryPM25_L2": {
-     "type": "observed",
-     "units": "ug/m^3",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "conc_PrimaryPM25_L2",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -10690,16 +11103,11 @@
         }
        ]
       }
-     },
-     "description": "Per-receptor primary PM2.5 response from the emissions that reach layer 2: sum_s SR_PrimaryPM25_L2[s,rcv]*E_PM25_L2[s] (pre-fact). A PLAIN TWO-FACTOR product summed over one contracted index, one observed per (pathway, layer) \u2014 folding the three layers into a single aggregate would make the rewrite's matvec detector reject this body (it requires op `*` with exactly two args) and drop the pathway from the SR gate silently."
+     }
     },
-    "conc_SOA": {
-     "type": "observed",
-     "units": "ug/m^3",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "conc_SOA",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -10740,16 +11148,11 @@
         }
        ]
       }
-     },
-     "description": "Per-receptor concentration response from the secondary organic aerosol pathway, summed over the three SR emission layers: conc_SOA_L0 + conc_SOA_L1 + conc_SOA_L2. The layer split is where plume rise shows up in the answer."
+     }
     },
-    "conc_pNO3": {
-     "type": "observed",
-     "units": "ug/m^3",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "conc_pNO3",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -10790,16 +11193,11 @@
         }
        ]
       }
-     },
-     "description": "Per-receptor concentration response from the particulate nitrate pathway, summed over the three SR emission layers: conc_pNO3_L0 + conc_pNO3_L1 + conc_pNO3_L2. The layer split is where plume rise shows up in the answer."
+     }
     },
-    "conc_pNH4": {
-     "type": "observed",
-     "units": "ug/m^3",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "conc_pNH4",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -10840,16 +11238,11 @@
         }
        ]
       }
-     },
-     "description": "Per-receptor concentration response from the particulate ammonium pathway, summed over the three SR emission layers: conc_pNH4_L0 + conc_pNH4_L1 + conc_pNH4_L2. The layer split is where plume rise shows up in the answer."
+     }
     },
-    "conc_pSO4": {
-     "type": "observed",
-     "units": "ug/m^3",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "conc_pSO4",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -10890,16 +11283,11 @@
         }
        ]
       }
-     },
-     "description": "Per-receptor concentration response from the particulate sulfate pathway, summed over the three SR emission layers: conc_pSO4_L0 + conc_pSO4_L1 + conc_pSO4_L2. The layer split is where plume rise shows up in the answer."
+     }
     },
-    "conc_PrimaryPM25": {
-     "type": "observed",
-     "units": "ug/m^3",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "conc_PrimaryPM25",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -10940,16 +11328,11 @@
         }
        ]
       }
-     },
-     "description": "Per-receptor concentration response from the primary PM2.5 pathway, summed over the three SR emission layers: conc_PrimaryPM25_L0 + conc_PrimaryPM25_L1 + conc_PrimaryPM25_L2. The layer split is where plume rise shows up in the answer."
+     }
     },
-    "TotalPM25": {
-     "type": "observed",
-     "units": "ug/m^3",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "TotalPM25",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -11012,16 +11395,11 @@
         }
        ]
       }
-     },
-     "description": "Total PM2.5 concentration at each receptor: fact*(conc_SOA+conc_pNO3+conc_pNH4+conc_pSO4+conc_PrimaryPM25)."
+     }
     },
-    "pm_SOA": {
-     "type": "observed",
-     "units": "ug/m^3",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "pm_SOA",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -11047,16 +11425,11 @@
         }
        ]
       }
-     },
-     "description": "Reported SOA PM2.5 component at each receptor: fact*conc_SOA."
+     }
     },
-    "pm_pNO3": {
-     "type": "observed",
-     "units": "ug/m^3",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "pm_pNO3",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -11082,16 +11455,11 @@
         }
        ]
       }
-     },
-     "description": "Reported pNO3 PM2.5 component at each receptor: fact*conc_pNO3."
+     }
     },
-    "pm_pNH4": {
-     "type": "observed",
-     "units": "ug/m^3",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "pm_pNH4",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -11117,16 +11485,11 @@
         }
        ]
       }
-     },
-     "description": "Reported pNH4 PM2.5 component at each receptor: fact*conc_pNH4."
+     }
     },
-    "pm_pSO4": {
-     "type": "observed",
-     "units": "ug/m^3",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "pm_pSO4",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -11152,16 +11515,11 @@
         }
        ]
       }
-     },
-     "description": "Reported pSO4 PM2.5 component at each receptor: fact*conc_pSO4."
+     }
     },
-    "pm_PrimaryPM25": {
-     "type": "observed",
-     "units": "ug/m^3",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "pm_PrimaryPM25",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -11187,16 +11545,11 @@
         }
        ]
       }
-     },
-     "description": "Reported PrimaryPM25 PM2.5 component at each receptor: fact*conc_PrimaryPM25."
+     }
     },
-    "deathsK": {
-     "type": "observed",
-     "units": "1",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "deathsK",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -11288,16 +11641,11 @@
         "mort_scale"
        ]
       }
-     },
-     "description": "Attributable deaths at each receptor (Krewski RR 1.06): (exp(log(rr)/10*TotalPM25)-1)*TotalPop*pop_scale*MortalityRate/100000*mort_scale. TotalPop/MortalityRate indexed on the rcv range = the [0:52411] prefix slice."
+     }
     },
-    "deathsL": {
-     "type": "observed",
-     "units": "1",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "deathsL",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -11389,16 +11737,11 @@
         "mort_scale"
        ]
       }
-     },
-     "description": "Attributable deaths at each receptor (Lepeule RR 1.14): (exp(log(rr)/10*TotalPM25)-1)*TotalPop*pop_scale*MortalityRate/100000*mort_scale. TotalPop/MortalityRate indexed on the rcv range = the [0:52411] prefix slice."
+     }
     },
-    "rcv_cx": {
-     "type": "observed",
-     "units": "m",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "rcv_cx",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -11437,16 +11780,11 @@
         2
        ]
       }
-     },
-     "description": "Receptor cell-centroid easting (W+E)/2 in LCC metres."
+     }
     },
-    "rcv_cy": {
-     "type": "observed",
-     "units": "m",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "rcv_cy",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -11485,16 +11823,11 @@
         2
        ]
       }
-     },
-     "description": "Receptor cell-centroid northing (S+N)/2 in LCC metres."
+     }
     },
-    "rcv_W": {
-     "type": "observed",
-     "units": "m",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "rcv_W",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -11514,16 +11847,11 @@
         "rcv"
        ]
       }
-     },
-     "description": "Receptor cell rectangle west edge in LCC metres: the [0:52411] prefix of the full-grid W. Written so a run's output store carries the geometry its fields are over \u2014 a field over rcv_cells is not drawable without it."
+     }
     },
-    "rcv_S": {
-     "type": "observed",
-     "units": "m",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "rcv_S",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -11543,16 +11871,11 @@
         "rcv"
        ]
       }
-     },
-     "description": "Receptor cell rectangle south edge in LCC metres: the [0:52411] prefix of the full-grid S. Written so a run's output store carries the geometry its fields are over \u2014 a field over rcv_cells is not drawable without it."
+     }
     },
-    "rcv_E": {
-     "type": "observed",
-     "units": "m",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "rcv_E",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -11572,16 +11895,11 @@
         "rcv"
        ]
       }
-     },
-     "description": "Receptor cell rectangle east edge in LCC metres: the [0:52411] prefix of the full-grid E. Written so a run's output store carries the geometry its fields are over \u2014 a field over rcv_cells is not drawable without it."
+     }
     },
-    "rcv_N": {
-     "type": "observed",
-     "units": "m",
-     "shape": [
-      "rcv_cells"
-     ],
-     "expression": {
+    {
+     "lhs": "rcv_N",
+     "rhs": {
       "op": "aggregate",
       "output_idx": [
        "rcv"
@@ -11601,11 +11919,9 @@
         "rcv"
        ]
       }
-     },
-     "description": "Receptor cell rectangle north edge in LCC metres: the [0:52411] prefix of the full-grid N. Written so a run's output store carries the geometry its fields are over \u2014 a field over rcv_cells is not drawable without it."
+     }
     }
-   },
-   "equations": [],
+   ],
    "analyses": [
     {
      "id": "isrm_demo",
@@ -11632,259 +11948,5 @@
     }
    ]
   }
- },
- "coupling": [
-  {
-   "type": "variable_map",
-   "from": "ISRM_SR_L0.SOA",
-   "to": "ISRM.SR_SOA_L0",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_SR_L1.SOA",
-   "to": "ISRM.SR_SOA_L1",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_SR_L2.SOA",
-   "to": "ISRM.SR_SOA_L2",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_SR_L0.pNO3",
-   "to": "ISRM.SR_pNO3_L0",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_SR_L1.pNO3",
-   "to": "ISRM.SR_pNO3_L1",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_SR_L2.pNO3",
-   "to": "ISRM.SR_pNO3_L2",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_SR_L0.pNH4",
-   "to": "ISRM.SR_pNH4_L0",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_SR_L1.pNH4",
-   "to": "ISRM.SR_pNH4_L1",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_SR_L2.pNH4",
-   "to": "ISRM.SR_pNH4_L2",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_SR_L0.pSO4",
-   "to": "ISRM.SR_pSO4_L0",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_SR_L1.pSO4",
-   "to": "ISRM.SR_pSO4_L1",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_SR_L2.pSO4",
-   "to": "ISRM.SR_pSO4_L2",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_SR_L0.PrimaryPM25",
-   "to": "ISRM.SR_PrimaryPM25_L0",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_SR_L1.PrimaryPM25",
-   "to": "ISRM.SR_PrimaryPM25_L1",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_SR_L2.PrimaryPM25",
-   "to": "ISRM.SR_PrimaryPM25_L2",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_Grid.W",
-   "to": "ISRM.W",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_Grid.S",
-   "to": "ISRM.S",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_Grid.E",
-   "to": "ISRM.E",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_Grid.N",
-   "to": "ISRM.N",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_Grid.TotalPop",
-   "to": "ISRM.TotalPop",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_Grid.MortalityRate",
-   "to": "ISRM.MortalityRate",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_Grid.src_W",
-   "to": "ISRM.src_W",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_Grid.src_S",
-   "to": "ISRM.src_S",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_Grid.src_E",
-   "to": "ISRM.src_E",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_Grid.src_N",
-   "to": "ISRM.src_N",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_Grid.Temperature",
-   "to": "ISRM.Temperature",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_Grid.WindSpeed",
-   "to": "ISRM.WindSpeed",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_Grid.WindSpeedInverse",
-   "to": "ISRM.WindSpeedInverse",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_Grid.WindSpeedMinusThird",
-   "to": "ISRM.WindSpeedMinusThird",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_Grid.WindSpeedMinusOnePointFour",
-   "to": "ISRM.WindSpeedMinusOnePointFour",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_Grid.S1",
-   "to": "ISRM.S1",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_Grid.SClass",
-   "to": "ISRM.SClass",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_Grid.LayerHeight",
-   "to": "ISRM.LayerHeight",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "ISRM_Grid.Dz",
-   "to": "ISRM.Dz",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "EGU_Emis.lon",
-   "to": "ISRM.emis_lon",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "EGU_Emis.lat",
-   "to": "ISRM.emis_lat",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "EGU_Emis.annual",
-   "to": "ISRM.emis_annual",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "EGU_Emis.pollutant",
-   "to": "ISRM.pollutant",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "EGU_Emis.stkhgt",
-   "to": "ISRM.stkhgt",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "EGU_Emis.stkdiam",
-   "to": "ISRM.stkdiam",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "EGU_Emis.stktemp",
-   "to": "ISRM.stktemp",
-   "transform": "param_to_var"
-  },
-  {
-   "type": "variable_map",
-   "from": "EGU_Emis.stkvel",
-   "to": "ISRM.stkvel",
-   "transform": "param_to_var"
-  }
- ]
+ }
 }
