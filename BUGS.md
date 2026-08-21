@@ -237,9 +237,10 @@ SR chunks for a full run against the 100-row store that is ~536 s of the 704 s
 PREPARE — most of the run is waiting on revalidation of data it already has.
 
 It also silently distorts every chunk-size decision, which is how it was found.
-The 5-row store (§6) reads 11.4x fewer bytes and still ran 28% slower, because
-3x more chunks means 3x more round-trips; bytes were never the bottleneck.
-With this fixed, the smaller chunking should win on both axes.
+The 5-row store (§6) read 11.4x fewer bytes and still ran 28% slower, because
+3x more chunks meant 3x more round-trips; bytes were never the bottleneck. With
+this fixed the smaller chunking wins on both axes, measured: 233.1 s against
+262.2 s, and the document reads it again.
 
 **It needed a second fix to be safe**: `temporal` was declared in `.esm` sources
 but never passed to `DataLoader` by `providers_from_document`, so no document
@@ -389,13 +390,15 @@ descriptions now say why, where four used to say the opposite.
 * A **rechunked and recompressed** copy was published alongside it as
   `s3://inmap-model/isrm_v1.2.2.zarr` — same values, `[1, 5, 52411]` chunks and
   zstd instead of `[1, 100, 52411]` and lz4, plus consolidated `.zmetadata` so
-  the store can be opened over plain HTTPS at all. The document reads it as of
-  `55fd0ec`. Measured: a full run fetches **3.5 GB instead of 40 GB**, but
-  PREPARE is **28% slower** (902 s vs 704 s, both warm), because 56,463 small
-  chunks cost more in per-object overhead than 18,978 large ones save in bytes.
-  That is a trade, not a win, and the byte side is the half worth having. See
-  `RECHUNK.md` — including the part where the recommendation optimised bytes and
-  assumed time would follow it, which it did not.
+  the store can be opened over plain HTTPS at all. The document reads it.
+  It first looked like a trade rather than a win — 3.5 GB fetched instead of
+  40 GB, but PREPARE 28% slower (902 s vs 704 s, both warm) — and that slowdown
+  turned out to be §4.0, not the chunk size: 3x the chunks meant 3x the cache
+  revalidation round-trips. With §4.0 fixed, re-measured full scale on the same
+  warm caches: **233.1 s against 262.2 s, and 3.5 GB against 40 GB**. See
+  `RECHUNK.md`, including the part where the recommendation optimised bytes and
+  asserted a speedup it had not measured — right in the end, but not for the
+  reason given at the time.
 
 ---
 
