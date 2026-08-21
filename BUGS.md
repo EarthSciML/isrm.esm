@@ -258,6 +258,19 @@ the raw-JSON mapping shape `providers_from_document` actually holds — reading
 only attributes had made a declared cadence degrade to CONST indistinguishably
 from a legitimate "no anchor".
 
+**Rust caught up 2026-08-21** (EarthSciAST `b41ceefba`): it had no ISO-8601
+converter at all, so its bridge built every `DataSource` with no cadence. It now
+parses the duration and the instant itself — deliberately by hand, against the
+same mean-Gregorian constants Python's `approximate_seconds` uses (365.2425 /
+30.436875 days), because the two bindings must resolve one document's `P1M` to
+the same second. Cross-checked spec by spec against the Python parser, including
+which malformed spellings each rejects. Two spellings that are NOT errors: a
+block with no `start` stays CONST (nothing anchors the schedule), and either
+`frequency` or `file_period` alone fills in for the other. A block that anchors
+and then names neither IS an error, because reading its first file forever would
+be a wrong answer rather than a slow one — the one place where refusing to run
+beats guessing.
+
 
 
 ### 4.1 The overlap gate did not drive enumeration on ordinary aggregates
@@ -406,14 +419,10 @@ descriptions now say why, where four used to say the opposite.
 
 ## 6. Still open
 
-* **`temporal` is ignored** by `providers_from_document` — **fixed in Python
-  2026-08-20** (EarthSciAST `ca10f1214`), together with §4.0; **still open in
-  Rust**, which sets no cadence on a `DataSource` anywhere and so reads every
-  source as CONST. Harmless for this document (its five sources are all static)
-  and load-bearing for anything hourly: with §4.0's ladder, an absent `temporal`
-  now means *immutable*, so a dropped cadence pins stale bytes rather than
-  merely refetching too often. Rust needs an ISO-8601 duration/instant converter
-  to `earthsciio::SourceTemporal`, which does not exist yet.
+* ~~**`temporal` is ignored** by `providers_from_document`.~~ **DONE** — Python
+  2026-08-20 (`ca10f1214`), Rust 2026-08-21 (`b41ceefba`). See §4.0. Nothing in
+  this document moves (its five sources are all static, and the reduced record
+  re-runs bit-for-bit), which is exactly why it went unnoticed for so long.
 * **EarthSciAST's CI never builds `--features esio`** — the feature resolves
   EarthSciIO from a sibling checkout that is not on a runner, so the whole
   provider bridge is compiled by nothing but a human running `isrm.esm`. That is
