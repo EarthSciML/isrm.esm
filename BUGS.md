@@ -205,6 +205,49 @@ and falsely rejected a shared *valid* fixture; Julia never called
 
 ## 4. Defects that cost only performance
 
+### 4.0 Every warm cache hit pays a network round-trip
+
+**`EarthSciIO/earthsciio/validate.py`, `decide()`.** The freshness ladder is
+first-wins, and it is ordered:
+
+```python
+if expected_checksum: ...          # 1. content hash
+if manifest.etag or manifest.last_modified:
+    return REVALIDATE              # 2. conditional GET
+if temporal is None or temporal.immutable:
+    return HIT                     # 3. never reached for an S3 store
+```
+
+**S3 always returns an ETag**, so rule 2 always fires and rule 3 is dead code
+for every S3-backed store. A cached chunk that is already on local disk issues a
+conditional GET to us-east-2 before it can be used — including for a source
+explicitly declared immutable, which is precisely the declaration that should
+make the round-trip unnecessary.
+
+Measured on the ISRM store, 60 chunks, cache already warm:
+
+| | per chunk |
+|---|---|
+| as shipped | **85.9 ms** |
+| `immutable` checked before validators | **0.078 ms** |
+| (raw `open()` + `read()` of the same file) | 0.078 ms |
+
+**1,100x**, and the fixed cost falls to exactly the file-read floor. At ~6,240
+SR chunks for a full run against the 100-row store that is ~536 s of the 704 s
+PREPARE — most of the run is waiting on revalidation of data it already has.
+
+It also silently distorts every chunk-size decision, which is how it was found.
+The 5-row store (§6) reads 11.4x fewer bytes and still ran 28% slower, because
+3x more chunks means 3x more round-trips; bytes were never the bottleneck.
+With this fixed, the smaller chunking should win on both axes.
+
+**This needs a second fix to be reachable from a document**: `temporal` is
+declared in `.esm` loaders but never passed to `DataLoader` by
+`providers_from_document` (§6), so no document can currently say `immutable`
+at all. Both halves are needed.
+
+
+
 ### 4.1 The overlap gate did not drive enumeration on ordinary aggregates
 **EarthSciAST, all three bindings.** Fixed.
 
@@ -317,6 +360,9 @@ descriptions now say why, where four used to say the opposite.
 
 * **`temporal` is ignored** by `providers_from_document`: a loader declaring an
   hourly cadence is served CONST — reads the first file once, forever, no warning.
+  It is also half of §4.0: with no `temporal` reaching the loader, no document
+  can declare a store immutable, so every cached chunk revalidates over the
+  network forever.
 * **`source.mirrors` are dropped** — declared failover URLs never reach the loader.
 * **`determinism` is read by nothing**, in either repo, despite `esm-spec.md`
   §8.9 being a normative MUST.
