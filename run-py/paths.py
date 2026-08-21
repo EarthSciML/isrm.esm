@@ -4,7 +4,8 @@ Everything derives from this file's own location (hence the isrm.esm checkout)
 plus optional environment overrides, so the shim is portable across machines —
 the Python mirror of run-jl/paths.jl.
 
-  ISRM_MODEL       the .esm to drive       (default: <repo>/isrm.esm)
+  ISRM_MODEL       the .esm to drive       (default: <repo>/isrm_point.esm,
+                   which imports the shared templates from isrm_base.esm)
   ISRM_SCRATCH     bulk scratch root       (default: first writable of
                    /scratch.local/$USER, $SCRATCH, tempdir)
   EA_PATH          earthsci-ast-py checkout  (default: <sibling>/EarthSciAST/pkg/earthsci-ast-py)
@@ -37,7 +38,7 @@ RUNPY_DIR = os.path.dirname(os.path.abspath(__file__))  # run-py/
 REPO = os.path.dirname(RUNPY_DIR)  # the isrm.esm checkout
 CODE_ROOT = os.path.dirname(REPO)  # where sibling checkouts live
 
-MODEL = os.environ.get("ISRM_MODEL", os.path.join(REPO, "isrm.esm"))
+MODEL = os.environ.get("ISRM_MODEL", os.path.join(REPO, "isrm_point.esm"))
 
 EA_PATH = os.environ.get(
     "EA_PATH", os.path.join(CODE_ROOT, "EarthSciAST", "pkg", "earthsci-ast-py")

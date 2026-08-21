@@ -1,7 +1,7 @@
 {
   "binding": "rust",
   "binding_version": "rust / earthsci-ast 0.1.0",
-  "model": "isrm.esm",
+  "model": "isrm_point.esm",
   "mode": "runtime_observed_graph",
   "grid": {
     "n_src": 52411,
@@ -152,10 +152,10 @@
     }
   },
   "timing": {
-    "peak_rss_bytes": 498229248.0,
-    "prepare_seconds": 9.205642095,
-    "providers_seconds": 0.020749677,
-    "wall_seconds": 9.299616415
+    "peak_rss_bytes": 507490304.0,
+    "prepare_seconds": 7.663488087,
+    "providers_seconds": 0.015501128,
+    "wall_seconds": 7.685843105
   },
   "plume": {
     "sr_lower": {

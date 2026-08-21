@@ -3,7 +3,7 @@
 #
 #   include(joinpath(@__DIR__, "..", "contract", "results.jl"))
 #   write_results("run-model-jl/results.json";
-#                 binding_version = "...", model = "isrm.esm",
+#                 binding_version = "...", model = "isrm_point.esm",
 #                 mode = "runtime_observed_graph",
 #                 n_src = 52411, n_rcv = 52411, n_rec = 43650,
 #                 ppl = ppl_ids,                       # 1-based, any order

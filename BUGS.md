@@ -203,6 +203,73 @@ and falsely rejected a shared *valid* fixture; Julia never called
 
 ---
 
+### 3.7 Splitting the document across files re-opened §3.1, three more ways
+**EarthSciAST, all three bindings.** Fixed 2026-08-21.
+
+§3.1 taught the pushdown detector to expand a surviving
+`apply_expression_template`. That fix is complete only for a template declared
+**inside the model**. Moving eleven shared bodies out into a template-library
+file (`isrm_base.esm`, esm-spec §9.7.1) and importing them broke the build
+again, in three places that had never had to agree before — and two of the three
+failed exactly the way §3.1 did, silently.
+
+* **Python and Rust handed the recogniser an unresolved document.** Both
+  `prepare`s read the raw `.esm` JSON — `json.load` / `&serde_json::Value` — and
+  pass it straight to `desugar_pushdown`. An import edge resolves at LOAD, which
+  has not happened yet on that path, so the imported templates are not in scope,
+  the binning body cannot expand, and the rewrite declines with §3.1's
+  consequence precisely: no derived set, no gate, the whole SR matrix in the
+  fetch plan, no diagnostic. Julia never had this because its `prepare` loads
+  first and desugars the serialized form. Fixed by resolving the §9.7 machinery
+  ahead of the rewrite in both bindings, gated on the document actually carrying
+  an edge so a document without one still reaches the recogniser in the bytes it
+  does today.
+
+* **Python discovered loader extents on the wrong side of the rewrite.** Julia
+  discovers first, then loads with the closed metaparameters; Python discovered
+  *after* the rewrite. Harmless for as long as nothing in between folded a
+  metaparameter — and the §9.7 resolution above does, which would have folded
+  `N_REC` to its default of 0 and sized `emis_records` to nothing before the FF10
+  loader had counted a row. Reordered to match Julia, with the gate/extent
+  contradiction check moved to after the rewrite, where the derived gate exists.
+
+* **Julia's build-time pre-passes had no expansion arm.** Four passes run at the
+  `build_evaluator` front door, *before* the boundary where `_build_evaluator_impl`
+  expands references: the binning-coordinate derivation, value invention, the
+  `member_factor` feedback and the overlap-env derivation. They evaluate bodies
+  through `_eval_cellwise`, which has no `apply_expression_template` arm. So the
+  LCC projection — projected at build time by that first pass — died with
+  `E_TREEWALK_UNSUPPORTED_OP: apply_expression_template` the moment it was
+  factored into a template, while the same document built in Rust and Python.
+  This one at least failed loudly. Fixed by expanding once for those passes
+  (§9.6.4 rule 2: a reference denotes its expansion, and every consumer may
+  expand); the impl keeps expanding its own copy with its sites.
+
+The shape is worth naming: **each binding resolves the document at a different
+depth before handing it to the same pass**, and nothing tests that they agree,
+because until now every document was one file.
+
+### 3.8 A library cannot own the axes, because two consumers read them raw
+**EarthSciAST.** Not fixed — worked around, and the reason is recorded here.
+
+esm-spec §9.7.5 lets a template-library file carry `index_sets` and
+`metaparameters`, which is exactly where the ISRM grid's axes belong. They could
+not move. Two consumers read those blocks out of the RAW document, before §9.7
+resolution: the esio bridge's `providers_from_document`, which folds a loader
+select's `range.stop: "N_SRC"` while building providers *ahead of* `prepare`, and
+the pushdown prepass. The first fails outright —
+
+```
+ISRM.src_E.update.from.select: range.stop names "N_SRC", which is not a
+metaparameter with an integer default
+```
+
+— and it cannot simply resolve first, because at that point the FF10 loader has
+not discovered `N_REC` and a resolve would default it to 0. So `isrm_base.esm`
+is templates only, and `src_cells` / `rcv_cells` / `all_cells` / `emis_layer` /
+`pathways` and their six sizing metaparameters are declared in each consuming
+document — about 2 KB duplicated per geometry sibling.
+
 ## 4. Defects in the engines, not in the physics
 
 Two cost only performance (§4.0, §4.1); two stopped a binding from running at
@@ -464,11 +531,16 @@ descriptions now say why, where four used to say the opposite.
 
 ## 7. The pattern
 
-Eleven of these were **silent**. Not one announced itself; every one produced a
+Thirteen of these were **silent**. Not one announced itself; every one produced a
 plausible number, an ignored declaration, or a quiet performance cliff. The three
 that changed this analysis's answer — the corrupt `layers`, the slab aliasing,
 the unapplied `unit_conversion` — all had the same shape: **something was
 declared, and something else did not honour the declaration.**
+
+§3.7 adds a second shape, and it took a two-file document to expose it: **the
+same pass, given the document at a different stage of resolution in each
+binding.** As long as a model was one file with no import edge, the three
+bindings' differing resolution depths were indistinguishable.
 
 What actually found them:
 

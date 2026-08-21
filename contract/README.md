@@ -78,7 +78,7 @@ languages so the sampled index set cannot drift on float rounding.
 
 ## `plume_oracle.py` — the cheap check on plume rise
 
-`isrm.esm` reproduces the InMAP source-receptor tutorial
+`isrm_point.esm` reproduces the InMAP source-receptor tutorial
 (<https://inmap.run/blog/2019/04/20/sr/>), **plume rise included**: the
 document states the ASME rise itself and charges each emission record to the
 SR emission layer its plume reaches. Emitting everything at ground level
@@ -141,7 +141,7 @@ re-baselining that retired that record — plume rise moves mass between layers,
 never into or out of a pathway, and changes which layer a record emits into,
 never which cell — so a live record must still carry them, and the comparator
 checks that. Agreeing there proves the oracle ingests the FF10 zip
-the way `isrm.esm` does, so a disagreement in the SR-layer assignment is about
+the way `isrm_point.esm` does, so a disagreement in the SR-layer assignment is about
 plume rise and nothing else.
 
 ### The record
