@@ -144,7 +144,7 @@
   "ISRM_Grid": {
    "kind": "static",
    "source": {
-    "url_template": "s3://inmap-model/isrm_v1.2.2.zarr/"
+    "url_template": "s3://inmap-model/isrm_v1.2.1.zarr/"
    },
    "reference": {
     "url": "https://inmap.run/blog/2022/12/15/tutorial/",
@@ -437,7 +437,7 @@
   "ISRM_SR_L0": {
    "kind": "static",
    "source": {
-    "url_template": "s3://inmap-model/isrm_v1.2.2.zarr/"
+    "url_template": "s3://inmap-model/isrm_v1.2.1.zarr/"
    },
    "reference": {
     "url": "https://inmap.run/blog/2022/12/15/tutorial/",
@@ -470,7 +470,7 @@
        ],
        "chunks": [
         1,
-        5,
+        100,
         52411
        ],
        "dtype": "<f4",
@@ -486,7 +486,7 @@
        ],
        "chunks": [
         1,
-        5,
+        100,
         52411
        ],
        "dtype": "<f4"
@@ -499,7 +499,7 @@
        ],
        "chunks": [
         1,
-        5,
+        100,
         52411
        ],
        "dtype": "<f4"
@@ -512,7 +512,7 @@
        ],
        "chunks": [
         1,
-        5,
+        100,
         52411
        ],
        "dtype": "<f4"
@@ -525,7 +525,7 @@
        ],
        "chunks": [
         1,
-        5,
+        100,
         52411
        ],
        "dtype": "<f4"
@@ -585,7 +585,7 @@
   "ISRM_SR_L1": {
    "kind": "static",
    "source": {
-    "url_template": "s3://inmap-model/isrm_v1.2.2.zarr/"
+    "url_template": "s3://inmap-model/isrm_v1.2.1.zarr/"
    },
    "reference": {
     "url": "https://inmap.run/blog/2022/12/15/tutorial/",
@@ -618,7 +618,7 @@
        ],
        "chunks": [
         1,
-        5,
+        100,
         52411
        ],
        "dtype": "<f4",
@@ -634,7 +634,7 @@
        ],
        "chunks": [
         1,
-        5,
+        100,
         52411
        ],
        "dtype": "<f4"
@@ -647,7 +647,7 @@
        ],
        "chunks": [
         1,
-        5,
+        100,
         52411
        ],
        "dtype": "<f4"
@@ -660,7 +660,7 @@
        ],
        "chunks": [
         1,
-        5,
+        100,
         52411
        ],
        "dtype": "<f4"
@@ -673,7 +673,7 @@
        ],
        "chunks": [
         1,
-        5,
+        100,
         52411
        ],
        "dtype": "<f4"
@@ -733,7 +733,7 @@
   "ISRM_SR_L2": {
    "kind": "static",
    "source": {
-    "url_template": "s3://inmap-model/isrm_v1.2.2.zarr/"
+    "url_template": "s3://inmap-model/isrm_v1.2.1.zarr/"
    },
    "reference": {
     "url": "https://inmap.run/blog/2022/12/15/tutorial/",
@@ -766,7 +766,7 @@
        ],
        "chunks": [
         1,
-        5,
+        100,
         52411
        ],
        "dtype": "<f4",
@@ -782,7 +782,7 @@
        ],
        "chunks": [
         1,
-        5,
+        100,
         52411
        ],
        "dtype": "<f4"
@@ -795,7 +795,7 @@
        ],
        "chunks": [
         1,
-        5,
+        100,
         52411
        ],
        "dtype": "<f4"
@@ -808,7 +808,7 @@
        ],
        "chunks": [
         1,
-        5,
+        100,
         52411
        ],
        "dtype": "<f4"
@@ -821,7 +821,7 @@
        ],
        "chunks": [
         1,
-        5,
+        100,
         52411
        ],
        "dtype": "<f4"
