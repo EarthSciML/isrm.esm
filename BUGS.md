@@ -496,6 +496,38 @@ descriptions now say why, where four used to say the opposite.
   how §4.2 and §4.3 each survived for months. Now that EarthSciIO publishes the
   names the bridge imports (0.1.2), a CI job could build the feature against the
   registry instead.
+* **The pushdown rewrite re-points only the gate ENVELOPE factors.** When it
+  compacts a binning aggregate's cell axis onto the derived support set, its
+  rect map is built from `tgt_env` alone (`pushdown_rewrite.py:1013-1017` and
+  the Julia/Rust peers). Any OTHER array the body indexes by the cell symbol is
+  left pointing at the full grid while the axis is now compact — full-grid
+  values read at support positions, **wrong numbers with no diagnostic**;
+  `_pd_assert_rects_rebound` checks the envelope factors only. Nothing hits it
+  today because every binning body in `isrm_point.esm` reads exactly the four
+  rect factors. **`isrm_polygon.esm` hits it immediately**: its allocation
+  weight is `polygon_intersection_area(cell_ring[c], rec_ring[k])`, and
+  `cell_ring` is a rank-3 `[cells, verts, 2]` array that is not an envelope
+  factor. The fix is a rank-PRESERVING gather (`pd_cell__<C>__<F>` with shape
+  `[support, …trailing]`); the guard that should ship with it is a DECLINE, so
+  the §3.1 consequence — an ungated fetch — is at least visible.
+* **A nested `aggregate` is not a portable geometry operand.** Building the cell
+  ring inline inside the binning body would dodge the item above, and Python
+  evaluates it correctly (the inner aggregate does see the enclosing cell
+  symbol). Julia refuses: `E_TREEWALK_GEOMETRY_SETUP: operand must be a
+  build-time array (a const/setup array name, an index slice of one, or an
+  intersect_polygon clip)`. So the spelling that works in one binding is not the
+  spelling a document may use.
+* **An indirect subscript on a geometry operand is wrong in two bindings.**
+  `polygon_intersection_area(index(cell_ring, index(members, p)), …)` — the
+  cheap alternative to a new gather — returns silently wrong values in Python
+  and throws `BoundsError … at index [0, …]` in Julia, which reads the member id
+  but never converts 0-based to 1-based. Two separate defects, one of them
+  silent.
+* **Index symbols are not usable as scalar VALUES.** `ifelse(d < 0.5, …)` inside
+  an `aggregate` whose `output_idx` carries `d` evaluates to garbage rather than
+  erroring — it neither reads the loop index nor refuses. A ring built from
+  scalars must route every index symbol through an `index(...)` position
+  instead (const selector arrays: `isx[d]`, `fx[v]`), which does work.
 * **`source.mirrors` are dropped** — declared failover URLs never reach the loader.
 * **`determinism` is read by nothing**, in either repo, despite `esm-spec.md`
   §8.9 being a normative MUST.
