@@ -32,8 +32,9 @@ pub fn repo() -> PathBuf {
     rs_dir().parent().map(Path::to_path_buf).unwrap_or_default()
 }
 
-/// The model this runner drives — `isrm_point.esm`, which imports the shared
-/// templates from `isrm_base.esm`.
+/// The model this runner drives. `isrm_point.esm` by default — the EGU point
+/// inventory, with plume rise; `ISRM_MODEL=…/isrm_polygon.esm` selects the
+/// area-source sibling. Both import the shared templates from `isrm_base.esm`.
 pub fn model() -> PathBuf {
     match std::env::var("ISRM_MODEL") {
         Ok(p) => PathBuf::from(p),
@@ -41,11 +42,33 @@ pub fn model() -> PathBuf {
     }
 }
 
-pub fn egu_zip() -> PathBuf {
-    match std::env::var("EGU_ZIP") {
-        Ok(p) => PathBuf::from(p),
-        Err(_) => repo().join("data").join("2016fd_inputs_point.zip"),
+/// A local copy of `url`, or `None`.
+///
+/// Mirroring is a LOCALITY choice of a run, never a property of the model, so it
+/// is resolved by matching the document's own `url_template` basename against
+/// `DATA_DIR` (default `<repo>/data`) rather than by naming any particular
+/// source here. That is what lets one shim mirror the FF10 point inventory for
+/// `isrm_point.esm` and the example polygon layer for `isrm_polygon.esm`
+/// without knowing either name. `EGU_ZIP` is a deprecated single-file alias,
+/// kept so an existing invocation still works; it is folded in as one more
+/// mirror, matched by its own basename.
+pub fn local_mirror(url: &str) -> Option<PathBuf> {
+    let base = url.trim_end_matches('/').rsplit('/').next()?;
+    if base.is_empty() {
+        return None;
     }
+    if let Ok(p) = std::env::var("EGU_ZIP") {
+        let p = PathBuf::from(p);
+        if p.file_name().map(|n| n == base).unwrap_or(false) && p.is_file() {
+            return Some(p);
+        }
+    }
+    let dir = match std::env::var("DATA_DIR") {
+        Ok(d) => PathBuf::from(d),
+        Err(_) => repo().join("data"),
+    };
+    let cand = dir.join(base);
+    cand.is_file().then_some(cand)
 }
 
 /// A DISK-backed scratch root (mirrors the Julia/Python resolution order).

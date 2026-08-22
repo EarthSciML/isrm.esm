@@ -6,6 +6,6 @@
 #
 # The two editable installs point at sibling checkouts (adjust or set
 # EA_PATH/IO_PATH env overrides consumed by paths.py instead).
--e ../../EarthSciIO[zarr,s3]
+-e ../../EarthSciIO[zarr,s3,shapefile]
 -e ../../EarthSciAST/pkg/earthsci-ast-py
 numpy

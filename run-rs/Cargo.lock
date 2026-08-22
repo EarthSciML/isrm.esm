@@ -179,6 +179,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "bufrw"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "394c22b416e3981206df472c3bcbbf9ae130883619aefc2199e6087517af1bba"
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -396,6 +402,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "dbase"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "abde818b4b82df61e01348c2b4610c221bcecb97cb7f567da086edf295d8d126"
+dependencies = [
+ "bufrw",
+ "byteorder",
+ "time",
+]
+
+[[package]]
 name = "defer"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -527,6 +544,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "shapefile",
  "tempfile",
  "tiff",
  "time",
@@ -2891,6 +2909,16 @@ dependencies = [
  "cfg-if",
  "cpufeatures 0.2.17",
  "digest",
+]
+
+[[package]]
+name = "shapefile"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "92fedc0c44dc53a02655cd8dccd2fdf3159c372c0f6eb59115e889f11325e4f0"
+dependencies = [
+ "byteorder",
+ "dbase",
 ]
 
 [[package]]

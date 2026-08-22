@@ -118,6 +118,10 @@ RTOL_SERVICE = 1e-7
 
 FULL_N_SRC = 52411
 FULL_N_REC = 43650
+#: The one document the published tutorial totals belong to. A record from a
+#: sibling document (isrm_polygon.esm) is compared across bindings but never
+#: against these.
+ORACLE_MODEL = "isrm_point.esm"
 
 SAMPLE_N = 25
 
@@ -395,6 +399,16 @@ def check_oracle(name: str, doc: dict, rep: Report) -> None:
     # comparison that IS meaningful. Cross-binding checks still run on it.
     grid = doc.get("grid") or {}
     n_rec = grid.get("n_rec")
+    # The tutorial totals belong to ONE document. `isrm_polygon.esm` computes a
+    # different model over the same grid — an area inventory this repository
+    # builds, which nobody has published a total for — so holding it against
+    # them is not a skipped check, it is a category error. Say so, rather than
+    # reporting it as a truncated point run.
+    if str(doc.get("model", "")) != ORACLE_MODEL:
+        print(f"\n--- {name} vs tutorial oracle: NOT APPLICABLE ---")
+        print(f"  record is from {doc.get('model')!r}; the published totals are "
+              f"{ORACLE_MODEL}'s. Cross-binding checks still run on it.")
+        return
     if (grid.get("n_src"), n_rec) != (FULL_N_SRC, FULL_N_REC):
         if n_rec in SERVICE_DEATHS:
             check_service(name, doc, SERVICE_DEATHS[n_rec], rep)

@@ -1,7 +1,11 @@
 // =============================================================================
-// run-rs — the RUST binding drives the clean `isrm_point.esm` end to end
-// through the PUBLIC earthsci_ast surface. NOTHING MODEL-SHAPED LIVES HERE:
-// this file names no pollutant, no column, no grid extent and no record count.
+// run-rs — the RUST binding drives an `isrm_*.esm` end to end through the
+// PUBLIC earthsci_ast surface. `ISRM_MODEL` picks which: `isrm_point.esm` (the
+// EGU point inventory, with plume rise) or `isrm_polygon.esm` (an area
+// inventory allocated by polygon/cell overlap). NOTHING MODEL-SHAPED LIVES
+// HERE: this file names no pollutant, no column, no grid extent, no record
+// count and no observed — the document's `metadata.x_esd.report` block names
+// what a run reports, so the same shim drives either geometry.
 //
 //   * `prepare(doc, {}, providers, pushdown_rewrite: true)` — the automatic
 //     projection-pushdown rewrite runs inside the engine; the SR provider
@@ -26,7 +30,7 @@
 //   REDUCED   (ISRM_FIRSTN=n)    -> first n emission records, totals reported
 //
 // Emits the cross-language contract record (contract/results_schema.json) with
-// model="isrm_point.esm", mode="runtime_observed_graph", binding="rust".
+// model=<the driven .esm>, mode="runtime_observed_graph", binding="rust".
 // =============================================================================
 
 mod contract;
@@ -39,49 +43,129 @@ use earthsci_ast::esio_provider::providers_from_document;
 use earthsci_ast::prepare::{PrepareOptions, PrepareProvider, prepare};
 use serde_json::{Value, json};
 
-/// zarr array name -> (the per-SR-layer emissions observeds, concentration
-/// observed). The emissions side grew a LAYER dimension when the document
-/// started stating plume rise: a record is charged to the SR layer its plume
-/// reaches, so a pathway's emissions are three arrays, not one. The
-/// concentration side did not — `conc_<p>` is the document's own sum over the
-/// three layered contractions.
-const PW_OBS: [(&str, [&str; 3], &str); 5] = [
-    ("SOA", ["E_VOC_L0", "E_VOC_L1", "E_VOC_L2"], "conc_SOA"),
-    ("pNO3", ["E_NOx_L0", "E_NOx_L1", "E_NOx_L2"], "conc_pNO3"),
-    ("pNH4", ["E_NH3_L0", "E_NH3_L1", "E_NH3_L2"], "conc_pNH4"),
-    ("pSO4", ["E_SOx_L0", "E_SOx_L1", "E_SOx_L2"], "conc_pSO4"),
-    (
-        "PrimaryPM25",
-        ["E_PM25_L0", "E_PM25_L1", "E_PM25_L2"],
-        "conc_PrimaryPM25",
-    ),
-];
+/// One reported pathway, as the DOCUMENT names it.
+struct PathwaySpec {
+    sr_array: String,
+    /// The per-source-cell emission observeds feeding this pathway. A LIST:
+    /// `isrm_point.esm` splits a pathway across the three SR emission layers a
+    /// record's plume falls between, `isrm_polygon.esm` has one because an area
+    /// source emits at the ground.
+    emissions: Vec<String>,
+    concentration: String,
+}
 
-/// The InMAP source-receptor tutorial's published national totals
-/// (<https://inmap.run/blog/2019/04/20/sr/>), which account for plume rise.
+/// `metadata.x_esd.report` — what this document says a run should report.
 ///
-/// These are a REFERENCE POINT, not a target and not an assertion. The document
-/// declines BOTH of InMAP's plume-rise defects: the high-plume source-index
-/// defect (a plume above model layer 7 keeps an index built in the coarse
-/// 9324-cell grid and is then read against the 52411-cell ground grid,
-/// misplacing 654 of 43650 records onto the wrong source cell) and the inverted
-/// layerFracs interpolation (which puts 6.25% of emitted mass on the wrong side
-/// of a split). So the run lands ABOVE these by about 1.35%, deliberately. What
-/// is actually checked is CORRECTED_K / CORRECTED_L below.
-const ORACLE_K: f64 = 6928.959583;
-const ORACLE_L: f64 = 15623.924632;
+/// The one place a pollutant, a pathway or an observed name enters this file,
+/// and it enters FROM THE DOCUMENT. A document that declares no `plume` gets no
+/// plume block; one that claims no published result gets no oracle check.
+struct Report {
+    pathways: Vec<PathwaySpec>,
+    total_pm25: String,
+    deaths_k: String,
+    deaths_l: String,
+    /// An observed over the RECORD axis, whose length IS N_REC. `extent` binds
+    /// that count inside the engine, but no binding exposes the resolved
+    /// metaparameter on its prepared model, so the count is read as the length
+    /// of a field over that axis — named by the document, because which field
+    /// it is depends on the geometry.
+    record_field: String,
+    /// `(sr_lower, stack_layer, weights)`, absent when the document states no
+    /// plume rise — an area source has no stack, so there is nothing to rise.
+    plume: Option<(String, String, Vec<String>)>,
+    oracle: Option<Oracle>,
+}
 
-/// What this document computes at full scale with CORRECT physics — measured
-/// 2026-08-20 against the repaired `isrm_v1.2.1.zarr`. Unlike ORACLE_K/L above
-/// this is not an external oracle but a regression lock on the document's own
-/// output; its authority comes from the NumPy oracle agreeing on the weights and
-/// from the InMAP-faithful configuration having matched the live service to
-/// 8.9e-9 before the physics was corrected.
-const CORRECTED_K: f64 = 7022.724781368745;
-const CORRECTED_L: f64 = 15835.993595627131;
-/// Cross-binding spread on this document is ~4e-18 relative, so this is loose by
-/// many orders of magnitude and catches a real change rather than float noise.
-const CORRECTED_REL: f64 = 1e-9;
+/// A published national total a document may claim to reproduce.
+///
+/// `published` is a REFERENCE POINT, not a target and not an assertion: for the
+/// InMAP source-receptor tutorial the document declines BOTH of InMAP's
+/// plume-rise defects — the high-plume source-index defect (a plume above model
+/// layer 7 keeps an index built in the coarse 9324-cell grid and is then read
+/// against the 52411-cell ground grid, misplacing 654 of 43650 records onto the
+/// wrong source cell) and the inverted layerFracs interpolation (which puts
+/// 6.25% of emitted mass on the wrong side of a split) — so the run lands ABOVE
+/// it by about 1.35%, deliberately.
+///
+/// `corrected` is what THAT document computes at full scale with CORRECT
+/// physics, measured 2026-08-20 against the repaired `isrm_v1.2.1.zarr`: not an
+/// external oracle but a regression lock on the document's own output, whose
+/// authority comes from the NumPy oracle agreeing on the weights and from the
+/// InMAP-faithful configuration having matched the live service to 8.9e-9
+/// before the physics was corrected. It is what is actually CHECKED.
+///
+/// `rel`: cross-binding spread on this document is ~4e-18 relative, so this is
+/// loose by many orders of magnitude and catches a real change, not float noise.
+#[derive(Clone, Copy)]
+struct Oracle {
+    published: (f64, f64),
+    corrected: (f64, f64),
+    rel: f64,
+}
+
+/// Keyed by the tag a document puts in `metadata.x_esd.report.oracle`, so which
+/// published result a run is measured against is the DOCUMENT's claim and not
+/// this file's guess. A document with no `oracle` tag — `isrm_polygon.esm`,
+/// whose example emission layer this repository builds and nobody has published
+/// a total for — is reported, not graded.
+fn oracle_for(tag: &str) -> Option<Oracle> {
+    match tag {
+        "inmap_sr_tutorial" => Some(Oracle {
+            published: (6928.959583, 15623.924632),
+            corrected: (7022.724781368745, 15835.993595627131),
+            rel: 1e-9,
+        }),
+        _ => None,
+    }
+}
+
+fn report_block(doc: &Value) -> Result<Report, String> {
+    let rep = doc
+        .pointer("/metadata/x_esd/report")
+        .ok_or("no metadata.x_esd.report block — this runner reads the reported \
+                pathway and observed names from the document rather than carrying \
+                a table of its own")?;
+    let str_at = |v: &Value, k: &str| -> Result<String, String> {
+        v[k].as_str()
+            .map(str::to_string)
+            .ok_or_else(|| format!("metadata.x_esd.report: `{k}` must be a string"))
+    };
+    let list_at = |v: &Value, k: &str| -> Result<Vec<String>, String> {
+        v[k].as_array()
+            .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
+            .ok_or_else(|| format!("metadata.x_esd.report: `{k}` must be a list of names"))
+    };
+    let pathways = rep["pathways"]
+        .as_array()
+        .filter(|a| !a.is_empty())
+        .ok_or("metadata.x_esd.report.pathways must be a non-empty list")?
+        .iter()
+        .map(|e| {
+            Ok(PathwaySpec {
+                sr_array: str_at(e, "sr_array")?,
+                emissions: list_at(e, "emissions")?,
+                concentration: str_at(e, "concentration")?,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let plume = match rep.get("plume") {
+        Some(p) if p.is_object() => Some((
+            str_at(p, "sr_lower")?,
+            str_at(p, "stack_layer")?,
+            list_at(p, "weights")?,
+        )),
+        _ => None,
+    };
+    Ok(Report {
+        pathways,
+        total_pm25: str_at(rep, "total_pm25")?,
+        deaths_k: str_at(&rep["deaths"], "krewski")?,
+        deaths_l: str_at(&rep["deaths"], "lepeule")?,
+        record_field: str_at(rep, "record_field")?,
+        plume,
+        oracle: rep["oracle"].as_str().and_then(oracle_for),
+    })
+}
 
 fn main() {
     if let Err(e) = run() {
@@ -145,15 +229,54 @@ fn declared_gated_arrays(doc: &Value) -> usize {
         .unwrap_or(0)
 }
 
+/// Every model PARAMETER fed by data source `src` — `(model, parameter)` pairs.
+///
+/// From esm 1.0.0 a source declares no variables of its own: the binding lives
+/// on the consuming parameter as `update: {kind: "data", source: …}`
+/// (esm-spec §6.3), so "what does this source deliver" is answered by walking
+/// the models, not the source.
+fn source_parameters(doc: &Value, src: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    if let Some(models) = doc["models"].as_object() {
+        for (mname, m) in models {
+            if let Some(vars) = m["variables"].as_object() {
+                for (vname, v) in vars {
+                    let up = &v["update"];
+                    if up["kind"] == "data" && up["source"] == src {
+                        out.push((mname.clone(), vname.clone()));
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
 /// REDUCED runs: truncate every record-discovering source to its first `n`
-/// DELIVERED records with a source-level `select` range (esm-spec §8.9.2).
-/// Because the selection follows the source's own `record_filter`, this picks
-/// the same records the previous runners' post-filter `truncate(n)` did — and
-/// `extent` then re-discovers the smaller N_REC by itself.
+/// DELIVERED records with a `select` range (esm-spec §8.9.2). Because the
+/// selection follows the source's own `record_filter`, this picks the same
+/// records a post-filter `truncate(n)` would — and `extent` then re-discovers
+/// the smaller N_REC by itself.
+///
+/// Written on each consuming PARAMETER rather than on the source, because
+/// `select.axes` is one entry per NATIVE array dimension and a source may
+/// deliver arrays of different ranks: the polygon layer's `geometry` is
+/// `[record, vertex, xy]` while its emission column is `[record]`, so no single
+/// source-level list is right for both. The rank comes from the parameter's own
+/// declared `shape`, and the record axis is axis 0 by definition of a record
+/// table.
 fn truncate_records(doc: &mut Value, n: usize) {
     for name in record_loaders(doc) {
-        doc["data_sources"][&name]["select"] =
-            json!({"axes": [{"range": {"start": 0, "stop": n}}]});
+        for (mname, vname) in source_parameters(doc, &name) {
+            let rank = doc["models"][&mname]["variables"][&vname]["shape"]
+                .as_array()
+                .map(|a| a.len())
+                .unwrap_or(1);
+            let mut axes = vec![json!({"range": {"start": 0, "stop": n}})];
+            axes.extend(std::iter::repeat_n(json!("all"), rank.saturating_sub(1)));
+            doc["models"][&mname]["variables"][&vname]["update"]["from"]["select"] =
+                json!({ "axes": axes });
+        }
     }
 }
 
@@ -163,20 +286,26 @@ fn run() -> Result<(), String> {
         .ok()
         .and_then(|s| s.parse().ok());
     let reduced = firstn.is_some();
-    if reduced {
-        println!("REDUCED run — first {} emission records", firstn.unwrap());
-    } else {
-        println!("FULL run — whole domain (correct physics: deathsK≈{CORRECTED_K:.2}, deathsL≈{CORRECTED_L:.2}; the tutorial's {ORACLE_K:.2}/{ORACLE_L:.2} is a reference, not a target)");
-    }
     let model_path = paths::model();
-    println!("model:   {}", model_path.display());
-    println!("scratch: {}", paths::scratch().display());
-    println!("cache:   {}", paths::esio_cache().display());
-
     let mut doc: Value = serde_json::from_str(
         &std::fs::read_to_string(&model_path).map_err(|e| format!("read {model_path:?}: {e}"))?,
     )
     .map_err(|e| format!("parse {model_path:?}: {e}"))?;
+    let report = report_block(&doc).map_err(|e| format!("{}: {e}", model_path.display()))?;
+    if reduced {
+        println!("REDUCED run — first {} emission records", firstn.unwrap());
+    } else if let Some(o) = report.oracle {
+        println!(
+            "FULL run — whole domain (correct physics: deathsK≈{:.2}, deathsL≈{:.2}; the \
+             tutorial's {:.2}/{:.2} is a reference, not a target)",
+            o.corrected.0, o.corrected.1, o.published.0, o.published.1
+        );
+    } else {
+        println!("FULL run — whole domain (the document claims no published total)");
+    }
+    println!("model:   {}", model_path.display());
+    println!("scratch: {}", paths::scratch().display());
+    println!("cache:   {}", paths::esio_cache().display());
     if let Some(n) = firstn {
         truncate_records(&mut doc, n);
     }
@@ -188,16 +317,21 @@ fn run() -> Result<(), String> {
     println!("building providers from the document ...");
     let t = Instant::now();
     let cache_root = paths::esio_cache();
-    // A local copy of a record loader's source is a LOCALITY choice of this
-    // run (gaftp.epa.gov is slow and flaky), so it is a url_override rather
-    // than an edit to the document.
+    // A local copy of a record source is a LOCALITY choice of this run
+    // (gaftp.epa.gov is slow and flaky; the example polygon layer is built in
+    // this repository and never needs fetching at all), so it is a url_override
+    // rather than an edit to the document — and it is matched by the document's
+    // OWN url basename, so this file names no source.
     let mut url_overrides: HashMap<String, String> = HashMap::new();
-    let zip = paths::egu_zip();
-    if zip.is_file() {
-        for name in record_loaders(&doc) {
-            url_overrides.insert(name, format!("file://{}", zip.display()));
+    for name in record_loaders(&doc) {
+        let url = doc["data_sources"][&name]["source"]["url_template"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        if let Some(local) = paths::local_mirror(&url) {
+            println!("  {name} mirrored from {}", local.display());
+            url_overrides.insert(name, format!("file://{}", local.display()));
         }
-        println!("  record source mirrored from {}", zip.display());
     }
     let providers = providers_from_document(&doc, &cache_root, None, &url_overrides)
         .map_err(|e| e.to_string())?;
@@ -251,9 +385,9 @@ fn run() -> Result<(), String> {
     }
 
     let n_rec = prep
-        .observed_field("X")
+        .observed_field(&report.record_field)
         .map(|a| a.len())
-        .map_err(|e| format!("no projected emission coordinate to size N_REC from: {e}"))?;
+        .map_err(|e| format!("no field over the record axis to size N_REC from: {e}"))?;
     let t_prep = t.elapsed().as_secs_f64();
     println!(
         "PREPARE done in {t_prep:.1} s  (peak RSS so far: {:.2} GiB)",
@@ -275,7 +409,7 @@ fn run() -> Result<(), String> {
     let n_src = metaparam(&doc, "N_SRC");
     let n_rcv = metaparam(&doc, "N_RCV");
     println!("engine-derived support set: |members| = {n_ppl} of {n_src} source cells");
-    if !reduced && n_ppl != 1520 {
+    if !reduced && report.oracle.is_some() && n_ppl != 1520 {
         println!("  WARNING: expected 1520 emission-bearing cells at full scale");
     }
 
@@ -288,38 +422,38 @@ fn run() -> Result<(), String> {
             .copied()
             .collect())
     };
-    let dk = field("deathsK")?;
-    let dl = field("deathsL")?;
-    let tp = field("TotalPM25")?;
+    let dk = field(&report.deaths_k)?;
+    let dl = field(&report.deaths_l)?;
+    let tp = field(&report.total_pm25)?;
     let mut pathways = BTreeMap::new();
-    let mut emis_by_layer: BTreeMap<String, [f64; 3]> = BTreeMap::new();
-    for (arr, evars, cvar) in PW_OBS {
-        // A pathway's emissions are now spread over the three SR layers; the
-        // record's `emis_sum` is the pathway TOTAL, so it stays comparable to
-        // the ground-level-only baselines (plume rise moves mass between
-        // layers, never into or out of a pathway).
+    let mut emis_by_layer: BTreeMap<String, Vec<f64>> = BTreeMap::new();
+    for spec in &report.pathways {
+        // `emissions` is a LIST: isrm_point.esm splits a pathway across the
+        // three SR emission layers a record's plume falls between,
+        // isrm_polygon.esm has one because an area source emits at the ground.
+        // `emis_sum` is the pathway TOTAL either way — plume rise moves mass
+        // between layers, never into or out of a pathway — so it stays
+        // comparable across both, and to the ground-level-only baselines.
         let mut e: Vec<f64> = Vec::new();
-        // How much mass plume rise put in each SR layer — the physics made
-        // visible as tons, per pathway.
-        let mut by_layer = [0.0f64; 3];
-        for (layer, evar) in evars.iter().copied().enumerate() {
+        let mut by_layer: Vec<f64> = Vec::new();
+        for evar in &spec.emissions {
             let el = field(evar)?;
-            by_layer[layer] = contract::compensated_sum(&el);
+            by_layer.push(contract::compensated_sum(&el));
             e.extend(el);
         }
-        let c = field(cvar)?;
+        let c = field(&spec.concentration)?;
         pathways.insert(
-            arr.to_string(),
+            spec.sr_array.clone(),
             contract::Pathway {
                 emis_sum: contract::compensated_sum(&e),
                 conc_sum: contract::compensated_sum(&c),
                 conc_max: c.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
             },
         );
-        emis_by_layer.insert(arr.to_string(), by_layer);
+        emis_by_layer.insert(spec.sr_array.clone(), by_layer);
     }
 
-    // The layer assignment itself — now a SPLIT, not a single layer: InMAP's
+    // The layer assignment itself — a SPLIT, not a single layer: InMAP's
     // sr.Reader.layerFracs charges a record to two SR layers whenever its model
     // layer falls between two entries of `layers`. `sr_lower` is the lower index
     // (integer, compared exactly) and w_sr0/1/2 are the three shares. These are
@@ -328,18 +462,34 @@ fn run() -> Result<(), String> {
     // not: the point of the contract's `plume` block is that the ENGINE produced
     // the assignment from the spec. contract/plume_oracle.py computes the same
     // quantity independently, from the meteorology arrays and without the SR
-    // matrix, and compare_results.py checks the two against each other.
-    let sr_lower = field("sr_lower")?;
-    let stack_layer = field("stack_layer")?;
-    let w0 = field("w_sr0")?;
-    let w1 = field("w_sr1")?;
-    let w2 = field("w_sr2")?;
-    let plume = contract::plume_block(
-        &sr_lower,
-        &stack_layer,
-        &[&w0, &w1, &w2],
-        &emis_by_layer,
-    )?;
+    // matrix, and compare_results.py checks the two against each other. A
+    // document with no plume rise to state — an area source has no stack —
+    // declares no `plume` key and emits no `plume` block.
+    let plume: Option<Value> = match &report.plume {
+        Some((lower, stack, weights)) => {
+            let sr_lower = field(lower)?;
+            let stack_layer = field(stack)?;
+            let w: Vec<Vec<f64>> = weights
+                .iter()
+                .map(|n| field(n))
+                .collect::<Result<_, String>>()?;
+            if w.len() != 3 {
+                return Err(format!(
+                    "metadata.x_esd.report.plume.weights names {} fields; the SR matrix \
+                     has three emission layers and the contract's plume block has three \
+                     weight slots",
+                    w.len()
+                ));
+            }
+            Some(contract::plume_block(
+                &sr_lower,
+                &stack_layer,
+                &[&w[0], &w[1], &w[2]],
+                &emis_by_layer,
+            )?)
+        }
+        None => None,
+    };
 
     // Compensated throughout, so the reported totals are a property of the
     // data rather than of Rust's reduction order (contract::compensated_sum).
@@ -349,61 +499,81 @@ fn run() -> Result<(), String> {
     println!("  sum(deathsK) = {sk:?}");
     println!("  sum(deathsL) = {sl:?}");
     println!("  Σ TotalPM25  = {:?}", contract::compensated_sum(&tp));
-    if !reduced {
+    println!(
+        "  Σ emitted    = {}",
+        pathways
+            .iter()
+            .map(|(k, v)| format!("{k} {:?}", v.emis_sum))
+            .collect::<Vec<_>>()
+            .join(" / ")
+    );
+    if let (false, Some(o)) = (reduced, report.oracle) {
+        let (ok, ol) = o.published;
+        let (ck, cl) = o.corrected;
         println!(
-            "  tutorial deathsK={ORACLE_K}  deviation {:.6}%  (reference, not a target)",
-            100.0 * (sk - ORACLE_K) / ORACLE_K
+            "  tutorial deathsK={ok}  deviation {:.6}%  (reference, not a target)",
+            100.0 * (sk - ok) / ok
         );
         println!(
-            "  tutorial deathsL={ORACLE_L} deviation {:.6}%  (reference, not a target)",
-            100.0 * (sl - ORACLE_L) / ORACLE_L
+            "  tutorial deathsL={ol} deviation {:.6}%  (reference, not a target)",
+            100.0 * (sl - ol) / ol
         );
-        let rk = (sk - CORRECTED_K) / CORRECTED_K;
-        let rl = (sl - CORRECTED_L) / CORRECTED_L;
-        if rk.abs() > CORRECTED_REL || rl.abs() > CORRECTED_REL {
+        let rk = (sk - ck) / ck;
+        let rl = (sl - cl) / cl;
+        if rk.abs() > o.rel || rl.abs() > o.rel {
             println!(
                 "  WARNING: {sk} / {sl} differs from the measured corrected-physics \
-                 totals {CORRECTED_K} / {CORRECTED_L} by more than {:.0e} relative. \
-                 That is a REGRESSION, not a tolerance: the two are the same document \
-                 on the same store.",
-                CORRECTED_REL
+                 totals {ck} / {cl} by more than {:.0e} relative. That is a REGRESSION, \
+                 not a tolerance: the two are the same document on the same store.",
+                o.rel
             );
         } else {
-            println!("  matches the measured corrected-physics totals to {:.1e} / {:.1e}",
-                     rk.abs(), rl.abs());
+            println!(
+                "  matches the measured corrected-physics totals to {:.1e} / {:.1e}",
+                rk.abs(),
+                rl.abs()
+            );
         }
     }
-    println!(
-        "  lower-SR-layer histogram (records per layer 0/1/2) = {}",
-        plume["sr_lower"]["histogram"]
-    );
-    println!(
-        "  sr_lower sha256 = {}",
-        plume["sr_lower"]["sha256"].as_str().unwrap_or("?")
-    );
-    println!(
-        "  Σ w_sr0/w_sr1/w_sr2 = {} / {} / {}   max|Σw - 1| = {}",
-        plume["weights"]["w_sr0"]["sum"],
-        plume["weights"]["w_sr1"]["sum"],
-        plume["weights"]["w_sr2"]["sum"],
-        plume["weights"]["max_sum_error"]
-    );
-    println!(
-        "    (check it against `python3 contract/plume_oracle.py{}` — no SR matrix needed)",
-        if reduced {
-            format!(" --firstn {}", n_rec)
-        } else {
-            String::new()
-        }
-    );
+    if let Some(p) = &plume {
+        println!(
+            "  lower-SR-layer histogram (records per layer 0/1/2) = {}",
+            p["sr_lower"]["histogram"]
+        );
+        println!(
+            "  sr_lower sha256 = {}",
+            p["sr_lower"]["sha256"].as_str().unwrap_or("?")
+        );
+        println!(
+            "  Σ w_sr0/w_sr1/w_sr2 = {} / {} / {}   max|Σw - 1| = {}",
+            p["weights"]["w_sr0"]["sum"],
+            p["weights"]["w_sr1"]["sum"],
+            p["weights"]["w_sr2"]["sum"],
+            p["weights"]["max_sum_error"]
+        );
+        println!(
+            "    (check it against `python3 contract/plume_oracle.py{}` — no SR matrix needed)",
+            if reduced {
+                format!(" --firstn {n_rec}")
+            } else {
+                String::new()
+            }
+        );
+    }
     println!("{}", "=".repeat(70));
 
     // ---- contract record ----------------------------------------------------
-    let out = paths::rs_dir().join(if reduced {
-        "results_reduced.json"
-    } else {
-        "results.json"
-    });
+    // Named after the MODEL, because two documents share this shim and must not
+    // share one record file: isrm_point.esm and isrm_polygon.esm answer
+    // different questions over the same grid.
+    let stem = model_path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "model".to_string());
+    let out = paths::rs_dir().join(format!(
+        "results_{stem}{}.json",
+        if reduced { "_reduced" } else { "" }
+    ));
     let mut timing = BTreeMap::new();
     timing.insert("wall_seconds".to_string(), t0.elapsed().as_secs_f64());
     timing.insert("providers_seconds".to_string(), t_providers);
@@ -422,7 +592,7 @@ fn run() -> Result<(), String> {
         &dk,
         &dl,
         &format!("rust / earthsci-ast {}", env!("CARGO_PKG_VERSION")),
-        Some(&plume),
+        plume.as_ref(),
         &timing,
     )?;
 

@@ -4,15 +4,21 @@ Everything derives from this file's own location (hence the isrm.esm checkout)
 plus optional environment overrides, so the shim is portable across machines —
 the Python mirror of run-jl/paths.jl.
 
-  ISRM_MODEL       the .esm to drive       (default: <repo>/isrm_point.esm,
-                   which imports the shared templates from isrm_base.esm)
+  ISRM_MODEL       the .esm to drive       (default: <repo>/isrm_point.esm;
+                   <repo>/isrm_polygon.esm is the area-source sibling. Both
+                   import the shared templates from isrm_base.esm)
   ISRM_SCRATCH     bulk scratch root       (default: first writable of
                    /scratch.local/$USER, $SCRATCH, tempdir)
   EA_PATH          earthsci-ast-py checkout  (default: <sibling>/EarthSciAST/pkg/earthsci-ast-py)
   IO_PATH          EarthSciIO checkout       (default: <sibling>/EarthSciIO)
-  EGU_ZIP          FF10 point-source zip     (default: <repo>/data/2016fd_inputs_point.zip;
-                   when absent, run.py falls back to fetching the document's
-                   source.url_template through the EarthSciIO cache)
+  DATA_DIR         local mirrors of fetchable sources (default: <repo>/data).
+                   A data source whose url_template's basename names a file in
+                   here is read from disk instead of the network — the FF10
+                   point inventory, the example polygon layer. Absent file =
+                   fetch the document's url_template through the cache.
+  EGU_ZIP          DEPRECATED single-file alias, kept so an existing
+                   EGU_ZIP=... invocation still works; it is folded in as one
+                   more mirror, matched by its own basename.
   ISRM_ESIO_CACHE  EarthSciIO cache root     (default: $ISRM_SCRATCH/run-py-esio-cache;
                    point it at an existing cache — e.g. run-jl's — to reuse
                    already-fetched SR chunk blobs, the cache format is
@@ -45,9 +51,26 @@ EA_PATH = os.environ.get(
 )
 IO_PATH = os.environ.get("IO_PATH", os.path.join(CODE_ROOT, "EarthSciIO"))
 
-EGU_ZIP = os.environ.get(
-    "EGU_ZIP", os.path.join(REPO, "data", "2016fd_inputs_point.zip")
-)
+DATA_DIR = os.environ.get("DATA_DIR", os.path.join(REPO, "data"))
+EGU_ZIP = os.environ.get("EGU_ZIP", "")  # deprecated; see local_mirror
+
+
+def local_mirror(url: str) -> str:
+    """A local copy of ``url``, or ``""``.
+
+    Mirroring is a LOCALITY choice of a run, never a property of the model, so
+    it is resolved by matching the document's own ``url_template`` basename
+    against ``DATA_DIR`` rather than by naming any particular source here. That
+    is what lets one shim mirror the FF10 point inventory for isrm_point.esm and
+    the example polygon layer for isrm_polygon.esm without knowing either name.
+    """
+    base = os.path.basename(url.rstrip("/"))
+    if not base:
+        return ""
+    if EGU_ZIP and os.path.basename(EGU_ZIP) == base and os.path.isfile(EGU_ZIP):
+        return EGU_ZIP
+    cand = os.path.join(DATA_DIR, base)
+    return cand if os.path.isfile(cand) else ""
 
 
 def _resolve_scratch() -> str:
