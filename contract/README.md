@@ -14,14 +14,15 @@ evaluated the *same* document and got the *same* answer.
 | `records/ground-level-only/` | the four pre-plume-rise full-scale baselines, retired; see the README there |
 
 Records are named after the DOCUMENT (`results_isrm_point.json`,
-`results_isrm_polygon.json`), because the same three shims drive both the point
-and the polygon model and two models must not share one record file. The schema
-is the same for both: a document that states no plume rise — an area source has
-no stack — simply carries no `plume` block, and one that claims no published
-total is reported rather than graded. Which observeds a runner reads comes from
-the document's own `metadata.x_esd.report`; a record from `isrm_polygon.esm` is
-comparable across bindings, and not comparable to a point record, which the
-comparator's `grid` check already enforces.
+`results_isrm_polygon.json`, `results_isrm_line.json`), because the same three
+shims drive all three models and they must not share one record file. The
+schema is the same for all of them: a document that states no plume rise —
+neither an area source nor a line source has a stack — simply carries no
+`plume` block, and one that claims no published total is reported rather than
+graded. Which observeds a runner reads comes from the document's own
+`metadata.x_esd.report`; a record from a sibling document is comparable across
+bindings, and not comparable to a point record, which the comparator's `grid`
+check already enforces.
 
 `compare_results.py` skips any record carrying a `kind` field, so
 `contract/records/*.json` stays a usable glob as non-results records land

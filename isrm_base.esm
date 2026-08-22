@@ -2,7 +2,7 @@
   "esm": "1.0.0",
   "metadata": {
     "name": "ISRM_base",
-    "description": "The geometry-independent half of the InMAP ISRM source-receptor model, as a TEMPLATE-LIBRARY file (esm-spec 9.7.1): the expression fragments every emission geometry shares \u2014 the Lambert-conformal forward projection, the source-receptor contraction term, the ug/m3 scaling and the log-linear concentration-response function \u2014 plus the fragments each GEOMETRY needs: point containment and the layer-major meteorology gather for a stack inventory, and rectangle overlap, ring construction, the overlap share and a shoelace term for an area one. A consuming document (isrm_point.esm, isrm_polygon.esm, and a future line sibling) imports this file, declares its own variables, equations and data_sources, and spells the shared math as apply_expression_template call sites. WHY A LIBRARY AND NOT A MOUNTED SUBSYSTEM: a library file may not declare models or data_sources (9.7.1), so those are duplicated per consumer \u2014 but the projection-pushdown desugar reads ONE model's own variables and observeds, before flattening (pushdown_rewrite.jl _pd_detect, simulate.jl prepare). Split the SR arrays or the binning aggregates behind a component boundary and the rewrite stops recognising the pattern, the derived support set is never built, and the SR fetch goes from 1520 source rows to the whole 52411-row matrix. Templates are safe where a subsystem is not: detection expands apply_expression_template references before matching, and emission edits the CALL SITE's bindings, never the shared body (conformance fixture pushdown/template_body).",
+    "description": "The geometry-independent half of the InMAP ISRM source-receptor model, as a TEMPLATE-LIBRARY file (esm-spec 9.7.1): the expression fragments every emission geometry shares \u2014 the Lambert-conformal forward projection, the source-receptor contraction term, the ug/m3 scaling and the log-linear concentration-response function \u2014 plus the fragments each GEOMETRY needs: point containment and the layer-major meteorology gather for a stack inventory, rectangle overlap, ring construction, the overlap share and a shoelace term for an area one, and a segment length, a Liang-Barsky length share and a record-axis group total for a line one. A consuming document (isrm_point.esm, isrm_polygon.esm, isrm_line.esm) imports this file, declares its own variables, equations and data_sources, and spells the shared math as apply_expression_template call sites. WHY A LIBRARY AND NOT A MOUNTED SUBSYSTEM: a library file may not declare models or data_sources (9.7.1), so those are duplicated per consumer \u2014 but the projection-pushdown desugar reads ONE model's own variables and observeds, before flattening (pushdown_rewrite.jl _pd_detect, simulate.jl prepare). Split the SR arrays or the binning aggregates behind a component boundary and the rewrite stops recognising the pattern, the derived support set is never built, and the SR fetch goes from 1520 source rows to the whole 52411-row matrix. Templates are safe where a subsystem is not: detection expands apply_expression_template references before matching, and emission edits the CALL SITE's bindings, never the shared body (conformance fixture pushdown/template_body).",
     "authors": [
       "EarthSciML"
     ],
@@ -1285,6 +1285,1113 @@
                   "v"
                 ]
               }
+            ]
+          }
+        ]
+      }
+    },
+    "seg_length": {
+      "description": "The planar length of record r's two-vertex segment: hypot of the differences of its endpoints, sqrt((lx[r,2]-lx[r,1])^2 + (ly[r,2]-ly[r,1])^2). `lx` and `ly` are [record, vertex] coordinate arrays in PROJECTED metres, so this is a planar length in the grid's own units and directly comparable to a cell edge. It is deliberately not the geodesic length the layer's LEN_KM column carries: that one is measured on the ellipsoid before projection, and over Illinois the two differ by about half a percent. What the allocation needs is the length in the SAME coordinates the clipping happens in, so that a segment's share of itself inside a cell and its share of its parent road are consistent. Two vertices, not a loop: the record IS a segment, so there is no vertex axis to reduce over here - see the one-row-per-segment note in isrm_line.esm.",
+      "params": [
+        "lx",
+        "ly"
+      ],
+      "body": {
+        "op": "sqrt",
+        "args": [
+          {
+            "op": "+",
+            "args": [
+              {
+                "op": "^",
+                "args": [
+                  {
+                    "op": "-",
+                    "args": [
+                      {
+                        "op": "index",
+                        "args": [
+                          "lx",
+                          "r",
+                          2
+                        ]
+                      },
+                      {
+                        "op": "index",
+                        "args": [
+                          "lx",
+                          "r",
+                          1
+                        ]
+                      }
+                    ]
+                  },
+                  2.0
+                ]
+              },
+              {
+                "op": "^",
+                "args": [
+                  {
+                    "op": "-",
+                    "args": [
+                      {
+                        "op": "index",
+                        "args": [
+                          "ly",
+                          "r",
+                          2
+                        ]
+                      },
+                      {
+                        "op": "index",
+                        "args": [
+                          "ly",
+                          "r",
+                          1
+                        ]
+                      }
+                    ]
+                  },
+                  2.0
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "length_share": {
+      "description": "The fraction of record r's segment that lies inside cell c's rectangle [xmin, xmax] x [ymin, ymax] - the LINE counterpart of `area_share`, and like it the weight that makes the allocation mass-conserving: the shares of one segment over a cell set that covers it sum to 1, so a segment lying entirely inside the grid delivers exactly its emission and one hanging off the edge loses exactly the part that hangs off. It needs no denominator, unlike `area_share`: the clip is done in the segment's own PARAMETER t, which runs 0 to 1 from the first endpoint to the second, so the clipped interval's width IS the share and the length cancels before it is ever formed. THE ALGORITHM is Liang-Barsky. Each of the rectangle's two slabs gives the segment two parameter values; the entry is the largest of the slab minima and 0, the exit the smallest of the slab maxima and 1, and the share is their gap clamped at 0 - empty when the entry passes the exit, which is exactly the 'misses the cell' case. There is no polygon kernel here at all, so none of the convexity and vertex-tolerance caveats that attend `area_share` apply; a cell rectangle and a straight segment are both exactly representable and the whole computation is four divisions and a handful of comparisons. WHY THE DIVISORS ARE FLOORED: a segment parallel to an axis has a zero component and would divide by zero, and `ifelse` does not guard its arms inside an `aggregate` in any binding, so the division cannot be conditional - it has to be safe. `eps` floors the magnitude of each component WITHOUT flipping its sign, which turns a parallel segment's two slab parameters into a matched pair of very large values: opposite in sign when the segment lies inside that slab, so the slab imposes no constraint, and the same sign and outside [0,1] when it does not, so the share is 0. Both are the right answers, reached without a branch. `eps` should be far below any real coordinate difference - a nanometre against metres - so that the floor engages only where the exact answer is a limit anyway.",
+      "params": [
+        "lx",
+        "ly",
+        "xmin",
+        "ymin",
+        "xmax",
+        "ymax",
+        "eps"
+      ],
+      "body": {
+        "op": "max",
+        "args": [
+          {
+            "op": "-",
+            "args": [
+              {
+                "op": "min",
+                "args": [
+                  1.0,
+                  {
+                    "op": "max",
+                    "args": [
+                      {
+                        "op": "/",
+                        "args": [
+                          {
+                            "op": "-",
+                            "args": [
+                              {
+                                "op": "index",
+                                "args": [
+                                  "xmin",
+                                  "c"
+                                ]
+                              },
+                              {
+                                "op": "index",
+                                "args": [
+                                  "lx",
+                                  "r",
+                                  1
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "op": "ifelse",
+                            "args": [
+                              {
+                                "op": ">=",
+                                "args": [
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "lx",
+                                          "r",
+                                          2
+                                        ]
+                                      },
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "lx",
+                                          "r",
+                                          1
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  0.0
+                                ]
+                              },
+                              {
+                                "op": "max",
+                                "args": [
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "lx",
+                                          "r",
+                                          2
+                                        ]
+                                      },
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "lx",
+                                          "r",
+                                          1
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  "eps"
+                                ]
+                              },
+                              {
+                                "op": "min",
+                                "args": [
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "lx",
+                                          "r",
+                                          2
+                                        ]
+                                      },
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "lx",
+                                          "r",
+                                          1
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      0.0,
+                                      "eps"
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "op": "/",
+                        "args": [
+                          {
+                            "op": "-",
+                            "args": [
+                              {
+                                "op": "index",
+                                "args": [
+                                  "xmax",
+                                  "c"
+                                ]
+                              },
+                              {
+                                "op": "index",
+                                "args": [
+                                  "lx",
+                                  "r",
+                                  1
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "op": "ifelse",
+                            "args": [
+                              {
+                                "op": ">=",
+                                "args": [
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "lx",
+                                          "r",
+                                          2
+                                        ]
+                                      },
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "lx",
+                                          "r",
+                                          1
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  0.0
+                                ]
+                              },
+                              {
+                                "op": "max",
+                                "args": [
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "lx",
+                                          "r",
+                                          2
+                                        ]
+                                      },
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "lx",
+                                          "r",
+                                          1
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  "eps"
+                                ]
+                              },
+                              {
+                                "op": "min",
+                                "args": [
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "lx",
+                                          "r",
+                                          2
+                                        ]
+                                      },
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "lx",
+                                          "r",
+                                          1
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      0.0,
+                                      "eps"
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "op": "max",
+                    "args": [
+                      {
+                        "op": "/",
+                        "args": [
+                          {
+                            "op": "-",
+                            "args": [
+                              {
+                                "op": "index",
+                                "args": [
+                                  "ymin",
+                                  "c"
+                                ]
+                              },
+                              {
+                                "op": "index",
+                                "args": [
+                                  "ly",
+                                  "r",
+                                  1
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "op": "ifelse",
+                            "args": [
+                              {
+                                "op": ">=",
+                                "args": [
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "ly",
+                                          "r",
+                                          2
+                                        ]
+                                      },
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "ly",
+                                          "r",
+                                          1
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  0.0
+                                ]
+                              },
+                              {
+                                "op": "max",
+                                "args": [
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "ly",
+                                          "r",
+                                          2
+                                        ]
+                                      },
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "ly",
+                                          "r",
+                                          1
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  "eps"
+                                ]
+                              },
+                              {
+                                "op": "min",
+                                "args": [
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "ly",
+                                          "r",
+                                          2
+                                        ]
+                                      },
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "ly",
+                                          "r",
+                                          1
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      0.0,
+                                      "eps"
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "op": "/",
+                        "args": [
+                          {
+                            "op": "-",
+                            "args": [
+                              {
+                                "op": "index",
+                                "args": [
+                                  "ymax",
+                                  "c"
+                                ]
+                              },
+                              {
+                                "op": "index",
+                                "args": [
+                                  "ly",
+                                  "r",
+                                  1
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "op": "ifelse",
+                            "args": [
+                              {
+                                "op": ">=",
+                                "args": [
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "ly",
+                                          "r",
+                                          2
+                                        ]
+                                      },
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "ly",
+                                          "r",
+                                          1
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  0.0
+                                ]
+                              },
+                              {
+                                "op": "max",
+                                "args": [
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "ly",
+                                          "r",
+                                          2
+                                        ]
+                                      },
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "ly",
+                                          "r",
+                                          1
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  "eps"
+                                ]
+                              },
+                              {
+                                "op": "min",
+                                "args": [
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "ly",
+                                          "r",
+                                          2
+                                        ]
+                                      },
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "ly",
+                                          "r",
+                                          1
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      0.0,
+                                      "eps"
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "op": "max",
+                "args": [
+                  0.0,
+                  {
+                    "op": "min",
+                    "args": [
+                      {
+                        "op": "/",
+                        "args": [
+                          {
+                            "op": "-",
+                            "args": [
+                              {
+                                "op": "index",
+                                "args": [
+                                  "xmin",
+                                  "c"
+                                ]
+                              },
+                              {
+                                "op": "index",
+                                "args": [
+                                  "lx",
+                                  "r",
+                                  1
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "op": "ifelse",
+                            "args": [
+                              {
+                                "op": ">=",
+                                "args": [
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "lx",
+                                          "r",
+                                          2
+                                        ]
+                                      },
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "lx",
+                                          "r",
+                                          1
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  0.0
+                                ]
+                              },
+                              {
+                                "op": "max",
+                                "args": [
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "lx",
+                                          "r",
+                                          2
+                                        ]
+                                      },
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "lx",
+                                          "r",
+                                          1
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  "eps"
+                                ]
+                              },
+                              {
+                                "op": "min",
+                                "args": [
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "lx",
+                                          "r",
+                                          2
+                                        ]
+                                      },
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "lx",
+                                          "r",
+                                          1
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      0.0,
+                                      "eps"
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "op": "/",
+                        "args": [
+                          {
+                            "op": "-",
+                            "args": [
+                              {
+                                "op": "index",
+                                "args": [
+                                  "xmax",
+                                  "c"
+                                ]
+                              },
+                              {
+                                "op": "index",
+                                "args": [
+                                  "lx",
+                                  "r",
+                                  1
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "op": "ifelse",
+                            "args": [
+                              {
+                                "op": ">=",
+                                "args": [
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "lx",
+                                          "r",
+                                          2
+                                        ]
+                                      },
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "lx",
+                                          "r",
+                                          1
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  0.0
+                                ]
+                              },
+                              {
+                                "op": "max",
+                                "args": [
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "lx",
+                                          "r",
+                                          2
+                                        ]
+                                      },
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "lx",
+                                          "r",
+                                          1
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  "eps"
+                                ]
+                              },
+                              {
+                                "op": "min",
+                                "args": [
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "lx",
+                                          "r",
+                                          2
+                                        ]
+                                      },
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "lx",
+                                          "r",
+                                          1
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      0.0,
+                                      "eps"
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "op": "min",
+                    "args": [
+                      {
+                        "op": "/",
+                        "args": [
+                          {
+                            "op": "-",
+                            "args": [
+                              {
+                                "op": "index",
+                                "args": [
+                                  "ymin",
+                                  "c"
+                                ]
+                              },
+                              {
+                                "op": "index",
+                                "args": [
+                                  "ly",
+                                  "r",
+                                  1
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "op": "ifelse",
+                            "args": [
+                              {
+                                "op": ">=",
+                                "args": [
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "ly",
+                                          "r",
+                                          2
+                                        ]
+                                      },
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "ly",
+                                          "r",
+                                          1
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  0.0
+                                ]
+                              },
+                              {
+                                "op": "max",
+                                "args": [
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "ly",
+                                          "r",
+                                          2
+                                        ]
+                                      },
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "ly",
+                                          "r",
+                                          1
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  "eps"
+                                ]
+                              },
+                              {
+                                "op": "min",
+                                "args": [
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "ly",
+                                          "r",
+                                          2
+                                        ]
+                                      },
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "ly",
+                                          "r",
+                                          1
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      0.0,
+                                      "eps"
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "op": "/",
+                        "args": [
+                          {
+                            "op": "-",
+                            "args": [
+                              {
+                                "op": "index",
+                                "args": [
+                                  "ymax",
+                                  "c"
+                                ]
+                              },
+                              {
+                                "op": "index",
+                                "args": [
+                                  "ly",
+                                  "r",
+                                  1
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "op": "ifelse",
+                            "args": [
+                              {
+                                "op": ">=",
+                                "args": [
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "ly",
+                                          "r",
+                                          2
+                                        ]
+                                      },
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "ly",
+                                          "r",
+                                          1
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  0.0
+                                ]
+                              },
+                              {
+                                "op": "max",
+                                "args": [
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "ly",
+                                          "r",
+                                          2
+                                        ]
+                                      },
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "ly",
+                                          "r",
+                                          1
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  "eps"
+                                ]
+                              },
+                              {
+                                "op": "min",
+                                "args": [
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "ly",
+                                          "r",
+                                          2
+                                        ]
+                                      },
+                                      {
+                                        "op": "index",
+                                        "args": [
+                                          "ly",
+                                          "r",
+                                          1
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "op": "-",
+                                    "args": [
+                                      0.0,
+                                      "eps"
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          0.0
+        ]
+      }
+    },
+    "group_total_term": {
+      "description": "One term of a GROUP-BY total over the record axis: `value`[q] when record q carries the same `key` as record r, and 0 otherwise. Summed over q with the output index r it gives each record the total of its whole group, replicated onto every member - `total[r] = sum over q of [key[q] == key[r]] * value[q]`. isrm_line.esm uses it to recover each ROAD's length from the segment rows the road was cut into, which is the denominator that turns a segment's length into its share of its parent. It is a self-join: both index symbols range over the SAME record set, which is the same shape as the format's canonical prefix-scan spelling (esm-spec 4.3.1), differing only in the predicate. That makes it quadratic in the record count, and deliberately so - the alternative is a second index set sized by a metaparameter the layer would have to keep in step, and a group total that is wrong when a reduced run truncates the records. This one stays correct under truncation: the groups are simply smaller, and the shares still sum to 1 over whatever survives. `key` must be exactly comparable. An integer identifier read from a shapefile .dbf numeric column arrives as a whole-numbered float64 and compares exactly; a key that has been through any arithmetic does not, and would silently split one group into several. THE CONTRACTED SYMBOL IS `q` AND MUST NOT BE `t`. An index symbol is local to its aggregate (esm-spec 4.3.1) and `t` is as legal a name as any, but the Python binding's build-time hoist decides an observed is time-varying by asking whether the bare name `t` occurs anywhere in its body, without excluding names an enclosing aggregate binds. An aggregate that contracts over a symbol called `t` is therefore classified as state-dependent, silently drops out of the static materialisation, and becomes unreadable by observed_field - no error, no warning, just a missing observed and every observed downstream of it missing too. See BUGS.md.",
+      "params": [
+        "key",
+        "value"
+      ],
+      "body": {
+        "op": "*",
+        "args": [
+          {
+            "op": "ifelse",
+            "args": [
+              {
+                "op": "==",
+                "args": [
+                  {
+                    "op": "index",
+                    "args": [
+                      "key",
+                      "q"
+                    ]
+                  },
+                  {
+                    "op": "index",
+                    "args": [
+                      "key",
+                      "r"
+                    ]
+                  }
+                ]
+              },
+              1.0,
+              0.0
+            ]
+          },
+          {
+            "op": "index",
+            "args": [
+              "value",
+              "q"
             ]
           }
         ]
