@@ -5,8 +5,15 @@
 computes it three times — once through each of EarthSciAST's Julia, Python, and
 Rust bindings — from that one document. It imports the geometry-independent
 half — the projection, the containment test, the contraction term, the health
-function — from `isrm_base.esm`, a template library meant to be shared with
-polygon- and line-geometry siblings (see [Two files](#two-files-and-where-the-seam-had-to-go)).
+function — from `isrm_base.esm`, a template library (see
+[Three files](#three-files-and-where-the-seam-had-to-go)).
+
+`isrm_polygon.esm` is the AREA-source sibling over the same grid and the same
+library: county polygons carrying an annual emission, allocated to source cells
+by the fraction of each polygon's area that falls in each cell. It differs from
+the point document in [exactly one
+equation](#the-same-model-over-a-different-emission-geometry), and the same
+three shims drive it unchanged.
 
 The point is not that three programs produce the same number. It is that **one
 spec drives three independent engines**, and the engines agree.
@@ -118,6 +125,65 @@ be indistinguishable from one with a bug. This one matched first.
 
 Every defect found on the way here, and what each did to this number, is in
 [`BUGS.md`](BUGS.md).
+
+### The same model over a different emission geometry
+
+`isrm_polygon.esm` is the AREA-source sibling. It shares `isrm_base.esm` with
+`isrm_point.esm` — the same Lambert projection, the same source-receptor
+contraction term, the same µg/m³ scaling, the same concentration-response
+function — and differs in **one equation**. A point drops all of its mass in the
+one cell that contains it; a polygon splits its mass across every cell it
+overlaps, in proportion to the overlapping area:
+
+```
+E[c] = Σ_r  [cell c's rect overlaps polygon r's box]        # the broad phase
+            · emis[r] · area(poly_r ∩ cell_c) / area(poly_r)   # the exact share
+```
+
+Everything downstream of that per-cell emission vector is identical. There is no
+plume rise, because an area source has no stack, no exit velocity and no exit
+temperature — nothing to rise. Its mass enters at the ground, so the document
+reads only the `ISRM_SR_L0` sibling loader and its contraction is one matvec
+rather than fifteen.
+
+The emission layer is an EXAMPLE this repository builds rather than an inventory
+anyone has published: `python data/make_polygon_layer.py` filters the US Census
+county boundaries to one state and attaches `EMIS = rate · ALAND / 1e6` short
+tons per year — a uniform per-square-kilometre source, read here as primary
+PM2.5. So there is no published total to match and the document claims none.
+Illinois, 102 counties, 143,778.46 short tons/yr over 143,778 km²:
+
+| | value |
+|---|---|
+| emission-bearing source cells (`ppl`) | 2,246 |
+| Σ emitted, allocated to cells | 143,778.373591 short tons/yr |
+| `Σ TotalPM25` | 3,827.474113 µg/m³ |
+| `sum(deathsK)` | 1,275.994494 |
+| `sum(deathsL)` | 2,879.508561 |
+
+Two numbers in that table are worth reading closely.
+
+**2,246 cells, but only 2,053 receive mass.** The support set the rewrite
+derives comes from the *broad phase* — the rectangle-overlap gate — and a
+broad phase is required to be conservative, not tight. 193 of those cells have a
+bounding box that overlaps a county's bounding box while the exact clip is
+empty. They cost 193 SR rows and contribute exactly zero. That is the gate doing
+its job.
+
+**The allocation loses 6.1e-7 of the mass, and it is not this equation's
+fault.** The per-cell shares should sum to exactly 1 for a polygon inside the
+grid — and at three counties they do, to 0.0. Over all 102 they sum to
+0.99999939. The cause is the geometry kernels' vertex-dedup tolerance, which is
+*relative to the coordinate value*: `rtol 1e-5` on a projected easting of order
+1e6 is about 6 metres, so three of the layer's 1,279 vertices — all on edges
+shorter than 4 m against a median edge of 2.4 km — are merged before the clip.
+Measured against an independent GEOS computation of the same 102 × 52,411
+overlaps: 4 of 2,053 cells differ by more than 1e-8 relative (worst 1.0e-4, on a
+cell holding 0.3% of the total), the next-worst is 8e-9, and everything below
+that is ordinary float difference between two clipping algorithms. It is named
+in the document
+(`metadata.x_esd.vertex_tolerance`) and filed in [`BUGS.md`](BUGS.md) rather
+than worked around, because every workaround is worse than the 6e-7.
 
 ### The gap was a corrupt array in the published zarr — and it is now closed
 
@@ -434,11 +500,11 @@ find the roughly 43,650 that a point-in-rectangle containment actually admits
 — about one per record. The engine now walks the broad-phase candidates
 instead. See [Timing](#timing) for what that was worth.
 
-## Two files, and where the seam had to go
+## Three files, and where the seam had to go
 
-`isrm_base.esm` is a **template-library file** (esm-spec §9.7.1): eleven
-`expression_templates` and nothing else. `isrm_point.esm` imports it with one
-edge inside the model —
+`isrm_base.esm` is a **template-library file** (esm-spec §9.7.1): fifteen
+`expression_templates` and nothing else. `isrm_point.esm` and
+`isrm_polygon.esm` each import it with one edge inside the model —
 
 ```json
 "expression_template_imports": [{ "ref": "./isrm_base.esm" }]
@@ -455,6 +521,20 @@ concentration-response function and the two receptor-rectangle fragments.
 loader, the pollutant masks, the ASME plume rise, and the fifteen
 `(pathway, SR layer)` binning aggregates.
 
+Four more templates arrived with the polygon sibling, and they are shared for
+the same reason the projection is: the *area* half of the geometry is not
+specific to counties. `cell_overlaps_box` is the rectangle-overlap broad phase
+(the area counterpart of `cell_contains_point`, closed on every edge because a
+broad phase must be conservative); `ring_xy` and `rect_ring_xy` build a ring
+array from coordinate expressions and from the grid's four edge arrays, which
+is how a document gets cell rings out of a grid that ships as `W/S/E/N`;
+`area_share` is the overlap fraction; and `ring_cross_term` is one shoelace
+term, because a ring's own area cannot be had from
+`polygon_intersection_area(ring, ring)` — see [BUGS.md](BUGS.md) on why that
+spelling is silently wrong for a non-convex ring. `isrm_polygon.esm` keeps
+what is specific to an inventory of areas: the shapefile source, the vertex
+reprojection, the projected bounding boxes and the one binning aggregate.
+
 **The seam is not a free choice.** Three constraints fix it:
 
 1. **Not a mounted subsystem.** The natural split — base owns the SR matrices and
@@ -465,6 +545,10 @@ loader, the pollutant masks, the ASME plume rise, and the fifteen
    arrays or the `E_*` aggregates behind a §4.7 subsystem or a §10 coupling
    boundary and the rewrite stops recognising the pattern, the support set is
    never derived, and the fetch goes from 1,520 source rows to the whole matrix.
+   The polygon sibling makes the same point from the other side: its cell
+   *rings* — a rank-3 `[cells, verts, 2]` observed — must be gathered onto the
+   derived support set along with the envelope bounds, which is a rewrite the
+   engine can only do inside one model ([BUGS.md](BUGS.md) §6).
 
 2. **Templates, but only the aggregate *bodies*.** `_pd_apply` re-points a
    matched aggregate's own `ranges`/`args`/`shape`/`join` in place, so those must
@@ -476,8 +560,8 @@ loader, the pollutant masks, the ASME plume rise, and the fifteen
 3. **The library cannot own the axes.** §9.7.5 would let it carry `index_sets`
    and `metaparameters`, but `providers_from_document` folds a loader select's
    `range.stop: "N_SRC"` out of the raw document, before any §9.7 resolution.
-   So the five index sets and six metaparameters are declared per document —
-   about 2 KB duplicated. See [BUGS.md §3.8](BUGS.md).
+   So the index sets and metaparameters are declared per document — about 2 KB
+   duplicated, and now duplicated twice. See [BUGS.md §3.8](BUGS.md).
 
 Getting the import edge to work at all took a fix in every binding
 ([BUGS.md §3.7](BUGS.md)): Python and Rust were handing the pushdown recogniser
@@ -495,9 +579,13 @@ every field except `model` and the timings.
 ## Layout
 
 ```
-isrm_point.esm    the model: point-source (stack) emissions through the ISRM
-isrm_base.esm     the template library it imports — the geometry-independent
-                  expression fragments, shared with future geometry siblings
+isrm_point.esm    a model: point-source (stack) emissions through the ISRM,
+                  with plume rise
+isrm_polygon.esm  a model: AREA (polygon) emissions through the same ISRM,
+                  allocated to cells by overlapping area — one equation
+                  different, no plume rise
+isrm_base.esm     the template library both import — the geometry-independent
+                  expression fragments, plus the area-geometry ones
 contract/         the shared result record: schema, the three emitters
                   (results.jl, results.py, run-rs/src/contract.rs), the
                   comparator, and plume_oracle.py — the offline record ->
@@ -509,7 +597,9 @@ contract/records/ plume_oracle.json, the SR-free reference the plume block is
 run-jl/           Julia shim   (run.jl; setup.jl instantiates the project)
 run-py/           Python shim  (run.py; requirements.txt is the venv recipe)
 run-rs/           Rust shim    (cargo project)
-data/             untracked — the EGU FF10 zip lives here
+data/             untracked except make_polygon_layer.py — the EGU FF10 zip
+                  lives here, and so does the example polygon layer that
+                  script builds
 ```
 
 Each shim emits a record conforming to
@@ -534,12 +624,23 @@ the binding's evaluation of the spec, not from hand-written arithmetic.
 
   The shims resolve them relative to the repo; override with `EA_PATH` /
   `IO_PATH`.
-* **The EGU zip**: `data/2016fd_inputs_point.zip` (69 MB), from
+* **The example polygon layer** (`isrm_polygon.esm` only):
+  `python data/make_polygon_layer.py` writes `data/polygon_emissions_17.zip`
+  (37 KB) from the US Census county boundaries. It needs `pyshp`, and it is
+  deliberately not committed — the layer is generated, not published, which is
+  why the document's `Polygon_Emis.source.url_template` is a repo-relative
+  `file:` url. Reading it needs the shapefile backend in each binding: `pyshp`
+  (in `run-py/requirements.txt`), `Shapefile.jl` (in `run-jl/Project.toml`),
+  and the `shapefile` crate, which the Rust EarthSciIO depends on
+  unconditionally.
+* **The EGU zip** (`isrm_point.esm` only): `data/2016fd_inputs_point.zip` (69 MB), from
   `https://gaftp.epa.gov/air/emismod/2016/alpha/2016fd/emissions/2016fd_inputs_point.zip`
-  (the document's `EGU_Emis.source.url_template`). Override with `EGU_ZIP`.
-  When the file is absent each shim falls back to fetching that URL through
-  the EarthSciIO cache — but gaftp.epa.gov is slow and flaky, so a manual
-  download into `data/` is the reliable path.
+  (the document's `EGU_Emis.source.url_template`). When a data source's url
+  basename names a file in `data/` (override the directory with `DATA_DIR`),
+  each shim reads it from disk; otherwise it fetches the url through the
+  EarthSciIO cache — but gaftp.epa.gov is slow and flaky, so a manual download
+  into `data/` is the reliable path. `EGU_ZIP` still works as a single-file
+  override.
 * **Julia** (developed on 1.12): `julia --project=run-jl run-jl/setup.jl`
   dev-tracks the two checkouts and instantiates.
 * **Python ≥ 3.11** (zarr 3.x requires it). Build the venv on disk-backed
@@ -574,10 +675,30 @@ python3 contract/plume_oracle.py
 
 # compare the live records against each other and against that reference
 python3 contract/compare_results.py contract/records/plume_oracle.json \
-    run-jl/results.json run-py/results.json run-rs/results.json
+    run-jl/results_isrm_point.json run-py/results_isrm_point.json \
+    run-rs/results_isrm_point.json
 ```
 
-Each shim writes `results.json` (or `results_reduced.json`) next to itself.
+Each shim writes `results_<model stem>.json` (or `…_reduced.json`) next to
+itself — named after the document, because the same three shims also drive
+`isrm_polygon.esm` and two models must not share one record file.
+
+To run the AREA-source sibling instead, build its emission layer once and point
+`ISRM_MODEL` at it:
+
+```bash
+python data/make_polygon_layer.py            # writes data/polygon_emissions_17.zip
+export ISRM_MODEL=$PWD/isrm_polygon.esm
+julia --project=run-jl run-jl/run.jl
+/scratch.local/$USER/isrm-py-venv/bin/python run-py/run.py
+./run-rs/target/release/run-rs
+python3 contract/compare_results.py run-{jl,py,rs}/results_isrm_polygon.json
+```
+
+Nothing else changes: the shims name no pollutant and no observed, so the same
+code drives either geometry. What a run reports comes from the document's
+`metadata.x_esd.report` block, which is why `isrm_polygon.esm` emits one
+pathway and no `plume` block without the shims knowing it has neither.
 
 The four pre-plume-rise baselines now live in
 `contract/records/ground-level-only/` and are deliberately **not** in that
@@ -761,5 +882,15 @@ The single `isrm.esm` became `isrm_base.esm` + `isrm_point.esm` on 2026-08-21.
 It is a pure factoring, not a re-baselining — the two files expand back to the
 document `isrm.esm` was, equation for equation — so every record from before the
 split stays comparable, and `git show 4bfd01c:isrm.esm` is the last single-file
-form. The split is the first step toward polygon- and line-geometry siblings
-that share `isrm_base.esm`.
+form. The split was the first step toward geometry siblings that share
+`isrm_base.esm`.
+
+`isrm_polygon.esm` is the second, added 2026-08-21. It changes nothing in
+`isrm_point.esm` and nothing in the physics the two share; it adds four
+templates to `isrm_base.esm` (the rectangle-overlap gate, two ring
+constructors, the overlap share and a shoelace term) and a `metadata.x_esd.report`
+block to BOTH documents, which is what let the three shims stop carrying a table
+of pollutants and observeds. Records are now named after the document
+(`results_isrm_point.json`), so a point record from before the rename is
+comparable to one from after it — the numbers are unchanged, verified at
+`ISRM_FIRSTN=200` against all three pre-existing records.
