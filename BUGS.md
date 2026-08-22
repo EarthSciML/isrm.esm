@@ -598,6 +598,82 @@ descriptions now say why, where four used to say the opposite.
   3`. Not a bug so much as a sharp edge with no diagnostic pointing at the fix:
   the three shims now write the truncation on each consuming PARAMETER, taking
   the rank from the parameter's own declared `shape`.
+* **Julia's build-time producer materialization was dead whenever an observed
+  had been inlined away — FIXED 2026-08-22.** `evaluate_cellwise` walks an
+  expression once PER OUTPUT CELL, so an array observed inlined into its readers
+  is re-executed at every cell of the consumer. `_materialized_obs_scope` exists
+  to stop that: it walks the chain from the requested observed and materializes
+  each producer once, in dependency order. It walked `insp.observed_defs` — the
+  UN-inlined bodies — and the build does not publish one for every observed. An
+  intermediate the build folded into its readers (here `line_x` / `line_y`, the
+  rank-2 projected segment endpoints) appears only in `observed_exprs`, the
+  fully substituted map. So the very first producer's definition referenced a
+  name that was in neither `observed_defs` nor `const_arrays`, raised
+  `E_TREEWALK_UNBOUND_VARIABLE`, was swallowed by the pass's tolerant `catch`,
+  and **every** producer above it failed in turn on the one below. Nothing was
+  materialized, and `deathsK` re-ran the whole spatial join once per receptor
+  cell: 52,411 x |support| x |records| evaluations of a ~300-node body. Measured
+  on `isrm_line.esm` at FORTY records, the smallest run this repository makes:
+  Rust and Python finished the whole run in about two and three seconds, and
+  Julia had not finished EVALUATING after fifteen minutes (its `prepare` is 63 s
+  of that, a separate and already-known gap). After the fix the same evaluation
+  is 7.0 s, and full scale is 43.7 s.
+  It is silent by construction — the fallback is slower, never wrong, so there
+  is no wrong number to notice and no warning to read. Neither sibling document
+  could expose it: `isrm_polygon.esm`'s whole reported chain is materialized at
+  SETUP by the geometry compiler (which is why `observed_field` needed the
+  setup-array fallback above), and `isrm_point.esm`'s producers are already in
+  `const_arrays` before value invention. `isrm_line.esm` is the first document
+  whose reported chain is ordinary observeds over an ordinary record axis, with
+  no geometry leaf anywhere — so it is the first to take this path at all.
+  The fix is to consult BOTH published forms: traverse and evaluate the
+  un-inlined definition when there is one (it is the cheap one, reading the
+  buffers already filled), and fall back to the fully substituted body when
+  there is not or when it cannot resolve. After the fix all eight producers
+  materialize, and nothing about WHICH terms are summed changes — the
+  substituted body is literally what the consumer would otherwise have
+  recomputed inline.
+  One consequence that is real, measured rather than assumed: materializing a producer
+  that previously could not be materialized changes the ASSOCIATION of the sums
+  above it, and float addition does not associate. Julia's `deaths` field on the
+  point document had been bit-identical to Python's and is now 5e-15 away from
+  it — the same distance Rust has always been. `total_pm25` is still
+  bit-identical in all three, `ppl` is unchanged, and the comparator passes on
+  all three documents (978 checks on the point document, 270 on each sibling,
+  0 failed). The pass's docstring claimed values were unchanged full stop; it
+  now says what is actually true.
+* **An index symbol named `t` is read as the TIME variable by Python's
+  build-time hoist.** An index symbol is local to its `aggregate` (esm-spec
+  §4.3.1) and `t` is as legal a name as `i`. But `_time_varying_observeds`
+  decides an observed is state-dependent by intersecting every bare string in
+  its body with `state_names | {"t"}`, and the walk it uses gathers index
+  symbols along with variable references — its own docstring says so and leaves
+  the filtering to the caller, which then adds a name no variable has to
+  declare. An aggregate contracting over `t` is therefore classified as
+  time-varying, silently drops out of the static materialization, and becomes
+  unreadable by `observed_field` — as does every observed downstream of it. The
+  error names whichever observed the caller happened to ask for, several steps
+  away, and the `static_skip_reasons` diagnostic that would have named the root
+  cause is empty, because the observed was never attempted. Reduced to a
+  six-record document: the same group-by total is correct spelled with `q` and
+  unreadable spelled with `t`. `isrm_line.esm` spells its self-join `q` and says
+  why; the caller should exclude symbols bound by an enclosing aggregate.
+* **The pushdown binning detector requires EXACTLY TWO ranges, so a
+  three-range binning aggregate silently loses its gate.** `_pd_detect_binning`
+  begins `length(ranges) == 2`, one of which must be the output cell set. A road
+  is a polyline, so the natural line document reads one record per road and
+  ranges its emission binning over (cell, road, vertex), contracting the last
+  two — which esm-spec §4.3.1 permits without comment, since it contracts the
+  SET of non-output symbols. The rewrite does not recognise it, and an
+  unrecognised binning aggregate does not fail: it drops out of `applies_to`, no
+  support set is derived, no gate reaches the loader, and the 33 GB SR slab is
+  fetched whole. That is §3.1's failure mode reached by a different door. The
+  document works around it by making the SEGMENT the record — one two-vertex row
+  per segment, the road recovered inside the model by a group total over the
+  record axis — which is why `data/make_line_layer.py` explodes the polylines.
+  The three-range case would be a real generalisation of the detector, not a
+  bug fix, but the silence is the defect: the pass warns about a join it cannot
+  read (`_pd_binning_refusal`) and says nothing about a join it never reached.
 * **A nested `aggregate` is not a portable geometry operand.** Building the cell
   ring inline inside the binning body was one of the three escapes probed while
   the item above was open; the rank-preserving gather makes it unnecessary, but

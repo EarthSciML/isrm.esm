@@ -8,12 +8,12 @@ half — the projection, the containment test, the contraction term, the health
 function — from `isrm_base.esm`, a template library (see
 [Three files](#three-files-and-where-the-seam-had-to-go)).
 
-`isrm_polygon.esm` is the AREA-source sibling over the same grid and the same
-library: county polygons carrying an annual emission, allocated to source cells
-by the fraction of each polygon's area that falls in each cell. It differs from
-the point document in [exactly one
-equation](#the-same-model-over-a-different-emission-geometry), and the same
-three shims drive it unchanged.
+`isrm_polygon.esm` and `isrm_line.esm` are the AREA- and LINE-source siblings
+over the same grid and the same library: county polygons allocated to source
+cells by overlapping [area](#the-same-model-over-a-different-emission-geometry),
+and road centrelines allocated by overlapping
+[length](#and-over-a-third-a-line-source). Each differs from the point document
+in exactly one equation, and the same three shims drive all three unchanged.
 
 The point is not that three programs produce the same number. It is that **one
 spec drives three independent engines**, and the engines agree.
@@ -184,6 +184,73 @@ that is ordinary float difference between two clipping algorithms. It is named
 in the document
 (`metadata.x_esd.vertex_tolerance`) and filed in [`BUGS.md`](BUGS.md) rather
 than worked around, because every workaround is worse than the 6e-7.
+
+### And over a third: a line source
+
+`isrm_line.esm` completes the family. Same base library, same everything
+downstream of the per-cell emission vector; a road splits its mass across the
+cells it *crosses*, in proportion to the length inside each:
+
+```
+E[c] = Σ_r  [cell c's rect overlaps segment r's box]        # the broad phase
+            · seg_emis[r] · len(seg_r ∩ cell_c) / len(seg_r)   # the exact share
+```
+
+It is the cheapest of the three and the most exact. **No geometry kernel is
+involved at all**: clipping a straight segment to an axis-aligned rectangle is
+Liang–Barsky — four divisions and some comparisons — so none of the convexity
+and vertex-tolerance caveats that attend polygon clipping apply here. Against an
+independent GEOS computation of the same 3,924 candidate pairs the worst
+disagreement is **2.7e-10 relative**, no cell differs by more than 1e-9, and
+every segment's shares sum to exactly 1.0. Compare the polygon document's 1.0e-4
+worst cell and 6.1e-7 mass leak.
+
+The one thing the line document has to do that the others do not is **recover
+the road from its segments**. Every record of the layer is a two-vertex segment
+carrying its parent road's id and its parent road's whole emission, and
+`road_len` sums the segments sharing an id to get the denominator that turns a
+segment's length into its share of the road. That is a self-join over the record
+axis — the same shape as the format's canonical prefix-scan spelling, with a
+different predicate.
+
+The segments are not a modelling choice. The pushdown detector requires a
+binning aggregate to declare **exactly two** ranges, so the natural
+(cell, road, vertex) form is legal ESM that the rewrite does not recognise —
+and an unrecognised binning aggregate does not fail, it silently loses its gate
+and fetches the whole 33 GB slab. The document says so in
+`metadata.x_esd.one_row_per_segment`, and it is filed in [`BUGS.md`](BUGS.md).
+What the document still owns is every *length* in the model: the layer hands it
+coordinates and a parent id, never a length. Its `LEN_KM` column is geodesic and
+deliberately unread — the model measures in the projection it clips in, and the
+two differ by half a percent (7,350.3 km planar against 7,386.9 km geodesic).
+
+`python data/make_line_layer.py` builds the layer: Census TIGER road
+centrelines for one state, filtered to the interstates, thinned by
+Douglas–Peucker at 200 m (a fifth of the grid's finest cell — TIGER carries a
+vertex every ~50 m, detail this grid cannot represent), cut into segments, with
+`EMIS = rate · length` short tons per year read as primary PM2.5. Illinois,
+292 roads, 1,938 segments, 7,386.90 short tons/yr over 7,386.9 km:
+
+| | value |
+|---|---|
+| emission-bearing source cells (`ppl`) | 757 |
+| …of which actually receive mass | 506 |
+| Σ emitted, allocated to cells | 7,386.899902 short tons/yr |
+| `Σ TotalPM25` | 518.472536 µg/m³ |
+| `sum(deathsK)` | 139.637701 |
+| `sum(deathsL)` | 314.314363 |
+
+Mass is conserved to the last digit of the declared inventory, which the polygon
+document cannot manage — there is no kernel in the path to lose any.
+
+Running it found two more engine defects, both silent and both in
+[`BUGS.md`](BUGS.md). Julia's build-time producer materialization was **dead**
+whenever a chain contained an observed the build had inlined away, so the
+spatial join was re-run once per receptor cell — at forty records, a ~2 s run
+in Rust and ~3 s in Python, and Julia unfinished after fifteen minutes. And an index symbol named
+`t` is read as the *time* variable by Python's static hoist, which silently
+makes the aggregate that binds it, and everything downstream, unreadable; the
+document's self-join contracts over `q` and says why.
 
 ### The gap was a corrupt array in the published zarr — and it is now closed
 
@@ -500,11 +567,11 @@ find the roughly 43,650 that a point-in-rectangle containment actually admits
 — about one per record. The engine now walks the broad-phase candidates
 instead. See [Timing](#timing) for what that was worth.
 
-## Three files, and where the seam had to go
+## Four files, and where the seam had to go
 
-`isrm_base.esm` is a **template-library file** (esm-spec §9.7.1): fifteen
-`expression_templates` and nothing else. `isrm_point.esm` and
-`isrm_polygon.esm` each import it with one edge inside the model —
+`isrm_base.esm` is a **template-library file** (esm-spec §9.7.1): nineteen
+`expression_templates` and nothing else. `isrm_point.esm`, `isrm_polygon.esm`
+and `isrm_line.esm` each import it with one edge inside the model —
 
 ```json
 "expression_template_imports": [{ "ref": "./isrm_base.esm" }]
@@ -534,6 +601,14 @@ term, because a ring's own area cannot be had from
 spelling is silently wrong for a non-convex ring. `isrm_polygon.esm` keeps
 what is specific to an inventory of areas: the shapefile source, the vertex
 reprojection, the projected bounding boxes and the one binning aggregate.
+
+Three more arrived with the line sibling, on the same principle: `seg_length`
+and `length_share` are the line counterparts of `ring_cross_term` and
+`area_share` — a segment's own planar length, and the Liang–Barsky fraction of
+it inside a cell rectangle — and `group_total_term` is the record-axis self-join
+that gives each segment the total length of the road it was cut from. Only
+`length_share` is geometry at all; the other two are arithmetic that any
+record-per-part layer would want.
 
 **The seam is not a free choice.** Three constraints fix it:
 
@@ -584,8 +659,12 @@ isrm_point.esm    a model: point-source (stack) emissions through the ISRM,
 isrm_polygon.esm  a model: AREA (polygon) emissions through the same ISRM,
                   allocated to cells by overlapping area — one equation
                   different, no plume rise
-isrm_base.esm     the template library both import — the geometry-independent
-                  expression fragments, plus the area-geometry ones
+isrm_line.esm     a model: LINE (polyline) emissions through the same ISRM,
+                  allocated to cells by overlapping length — one equation
+                  different, no plume rise, and no geometry kernel
+isrm_base.esm     the template library all three import — the geometry-
+                  independent expression fragments, plus the area- and
+                  line-geometry ones
 contract/         the shared result record: schema, the three emitters
                   (results.jl, results.py, run-rs/src/contract.rs), the
                   comparator, and plume_oracle.py — the offline record ->
@@ -597,9 +676,9 @@ contract/records/ plume_oracle.json, the SR-free reference the plume block is
 run-jl/           Julia shim   (run.jl; setup.jl instantiates the project)
 run-py/           Python shim  (run.py; requirements.txt is the venv recipe)
 run-rs/           Rust shim    (cargo project)
-data/             untracked except make_polygon_layer.py — the EGU FF10 zip
-                  lives here, and so does the example polygon layer that
-                  script builds
+data/             untracked except make_polygon_layer.py and
+                  make_line_layer.py — the EGU FF10 zip lives here, and so do
+                  the example polygon and line layers those scripts build
 ```
 
 Each shim emits a record conforming to
@@ -624,15 +703,16 @@ the binding's evaluation of the spec, not from hand-written arithmetic.
 
   The shims resolve them relative to the repo; override with `EA_PATH` /
   `IO_PATH`.
-* **The example polygon layer** (`isrm_polygon.esm` only):
+* **The example polygon and line layers** (their documents only):
   `python data/make_polygon_layer.py` writes `data/polygon_emissions_17.zip`
-  (37 KB) from the US Census county boundaries. It needs `pyshp`, and it is
-  deliberately not committed — the layer is generated, not published, which is
-  why the document's `Polygon_Emis.source.url_template` is a repo-relative
-  `file:` url. Reading it needs the shapefile backend in each binding: `pyshp`
-  (in `run-py/requirements.txt`), `Shapefile.jl` (in `run-jl/Project.toml`),
-  and the `shapefile` crate, which the Rust EarthSciIO depends on
-  unconditionally.
+  (37 KB) from the US Census county boundaries, and
+  `python data/make_line_layer.py` writes `data/line_emissions_17.zip` (371 KB)
+  from the Census TIGER road centrelines. Both need `pyshp`, and neither is
+  committed — the layers are generated, not published, which is why each
+  document's `source.url_template` is a repo-relative `file:` url. Reading them
+  needs the shapefile backend in each binding: `pyshp` (in
+  `run-py/requirements.txt`), `Shapefile.jl` (in `run-jl/Project.toml`), and the
+  `shapefile` crate, which the Rust EarthSciIO depends on unconditionally.
 * **The EGU zip** (`isrm_point.esm` only): `data/2016fd_inputs_point.zip` (69 MB), from
   `https://gaftp.epa.gov/air/emismod/2016/alpha/2016fd/emissions/2016fd_inputs_point.zip`
   (the document's `EGU_Emis.source.url_template`). When a data source's url
@@ -680,15 +760,17 @@ python3 contract/compare_results.py contract/records/plume_oracle.json \
 ```
 
 Each shim writes `results_<model stem>.json` (or `…_reduced.json`) next to
-itself — named after the document, because the same three shims also drive
-`isrm_polygon.esm` and two models must not share one record file.
+itself — named after the document, because the same three shims drive all three
+models and they must not share one record file.
 
-To run the AREA-source sibling instead, build its emission layer once and point
-`ISRM_MODEL` at it:
+To run a sibling instead, build its emission layer once and point `ISRM_MODEL`
+at it:
 
 ```bash
 python data/make_polygon_layer.py            # writes data/polygon_emissions_17.zip
-export ISRM_MODEL=$PWD/isrm_polygon.esm
+python data/make_line_layer.py               # writes data/line_emissions_17.zip
+
+export ISRM_MODEL=$PWD/isrm_polygon.esm      # or $PWD/isrm_line.esm
 julia --project=run-jl run-jl/run.jl
 /scratch.local/$USER/isrm-py-venv/bin/python run-py/run.py
 ./run-rs/target/release/run-rs
@@ -696,9 +778,11 @@ python3 contract/compare_results.py run-{jl,py,rs}/results_isrm_polygon.json
 ```
 
 Nothing else changes: the shims name no pollutant and no observed, so the same
-code drives either geometry. What a run reports comes from the document's
-`metadata.x_esd.report` block, which is why `isrm_polygon.esm` emits one
-pathway and no `plume` block without the shims knowing it has neither.
+code drives every geometry. What a run reports comes from the document's
+`metadata.x_esd.report` block, which is why the two siblings emit one pathway
+and no `plume` block without the shims knowing they have neither. The line
+model is the quickest way to see the whole pipeline work — 757 gated SR rows
+instead of 2,246, so a cold full-scale run is minutes.
 
 The four pre-plume-rise baselines now live in
 `contract/records/ground-level-only/` and are deliberately **not** in that
@@ -728,7 +812,21 @@ there.
 
 ### What runs today
 
-Written 2026-08-19, revised 2026-08-20, and worth checking before trusting it.
+Written 2026-08-19, revised 2026-08-20 and 2026-08-22, and worth checking
+before trusting it.
+
+* **All three documents run at full scale in all three bindings, and the
+  bindings agree** (2026-08-22). `compare_results.py`: 978 checks on
+  `isrm_point.esm` against the plume oracle at `ISRM_FIRSTN=200`, 270 on each
+  of `isrm_polygon.esm` and `isrm_line.esm`, 0 failed, `ppl` sha256 identical
+  in every case.
+* **One last-bit change landed with the line document, and it is worth
+  knowing about.** The EarthSciAST fix that made Julia's producer
+  materialization work also changes which intermediates are buffers rather than
+  inlined, and that reassociates some sums. Julia's `deaths` field had happened
+  to be bit-identical to Python's and is now 5e-15 from it — the distance Rust
+  has always been. `total_pm25` stays bit-identical across all three bindings
+  and `ppl` is untouched. Nothing semantic moved; see [`BUGS.md`](BUGS.md).
 
 * **Julia and Rust both run the layerFracs document at reduced scale**
   (`ISRM_FIRSTN=200` and `2000`), agree with each other and with the oracle,
@@ -818,6 +916,18 @@ it has not been separately measured at full scale, and the honest statement is
 that the four hours were mostly this. Full-scale timings for all three
 bindings under plume rise are still to be collected.
 
+The line document turned up a second one of these, in Julia, and the same
+lesson applies: the four hours were an engine behaviour, not a language.
+`isrm_line.esm` at forty records was a ~2 s run in Rust and a ~3 s run in
+Python, and Julia had not finished *evaluating* after fifteen minutes — because
+Julia's build-time producer materialization was silently doing nothing at all,
+so the binning aggregate was re-evaluated once per receptor cell. Fixed in
+EarthSciAST; the same evaluation is now 7.0 s, and full scale is 63 s of prepare
+and 43.7 s of evaluation.
+Details in [`BUGS.md`](BUGS.md); the point is that the whole chain was
+*correct* the entire time, which is why nothing caught it before a document
+happened to take that path.
+
 ## Tolerances
 
 `ppl` is compared **exactly**, and so are the `plume` block's two integer
@@ -894,3 +1004,14 @@ of pollutants and observeds. Records are now named after the document
 (`results_isrm_point.json`), so a point record from before the rename is
 comparable to one from after it — the numbers are unchanged, verified at
 `ISRM_FIRSTN=200` against all three pre-existing records.
+
+`isrm_line.esm` is the third, added 2026-08-22, and it closes the set: point,
+area, line. It changes nothing in either sibling and nothing in the shared
+physics; it adds three templates to `isrm_base.esm` (a segment length, the
+Liang–Barsky length share, and a record-axis group total) and one builder,
+`data/make_line_layer.py`. It also needed one EarthSciAST fix, because it is
+the first document in this repository whose reported chain is ordinary
+observeds over an ordinary record axis with no geometry leaf anywhere — a path
+on which Julia's build-time producer materialization turned out to be doing
+nothing at all. That fix makes every document faster, not just this one; it was
+only ever *visible* here.

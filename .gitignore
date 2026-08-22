@@ -1,9 +1,11 @@
 # Bulk input data stays untracked — the EGU FF10 zip lives at
 # data/2016fd_inputs_point.zip (see README "Prerequisites" for the download),
-# and data/polygon_emissions_*.zip is REBUILT by the script below rather than
-# committed. The script itself is source, so it is tracked.
+# and data/polygon_emissions_*.zip / data/line_emissions_*.zip are REBUILT by
+# the scripts below rather than committed. The scripts themselves are source,
+# so they are tracked.
 data/*
 !data/make_polygon_layer.py
+!data/make_line_layer.py
 __pycache__/
 *.pyc
 
