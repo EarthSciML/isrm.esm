@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 # =============================================================================
-# run.py — the PYTHON binding drives the clean `isrm_point.esm` end to end
-# through the PUBLIC earthsci_ast surface. NOTHING MODEL-SHAPED LIVES HERE:
-# this file names no pollutant, no column, no grid extent and no record count.
+# run.py — the PYTHON binding drives an `isrm_*.esm` end to end through the
+# PUBLIC earthsci_ast surface. `ISRM_MODEL` picks which: `isrm_point.esm` (the
+# EGU point inventory, with plume rise) or `isrm_polygon.esm` (an area
+# inventory allocated by polygon/cell overlap). NOTHING MODEL-SHAPED LIVES
+# HERE: this file names no pollutant, no column, no grid extent, no record
+# count and no observed — the document's `metadata.x_esd.report` block names
+# what a run reports, so the same shim drives either geometry.
 #
 #   * `prepare(doc, providers=…, pushdown_rewrite=True)` — the automatic
 #     projection-pushdown rewrite runs inside the engine; the SR provider gates
@@ -49,16 +53,20 @@ sys.path.insert(0, os.path.join(paths.REPO, "contract"))
 import results as contract  # noqa: E402
 
 T0 = time.time()
-# The InMAP source-receptor tutorial's published national totals
-# (https://inmap.run/blog/2019/04/20/sr/), which account for plume rise.
-# A TARGET, not an assertion: the document deliberately does not reproduce
-# InMAP's high-plume source-index defect (a plume above model layer 7 keeps an
-# index built in the coarse 9324-cell grid, then read against the 52411-cell
-# ground grid), which misplaces 654 of 43650 records - 0.43% of emitted mass -
-# onto the wrong source cell. So a run lands NEAR rather than ON these, and the
-# deviation is printed rather than failed.
-ORACLE_K = 6928.959583
-ORACLE_L = 15623.924632
+# The published national totals a document may claim to reproduce. For
+# `inmap_sr_tutorial` - https://inmap.run/blog/2019/04/20/sr/, which accounts
+# for plume rise - these are a TARGET, not an assertion: the document
+# deliberately does not reproduce InMAP's high-plume source-index defect (a
+# plume above model layer 7 keeps an index built in the coarse 9324-cell grid,
+# then read against the 52411-cell ground grid), which misplaces 654 of 43650
+# records - 0.43% of emitted mass - onto the wrong source cell. So a run lands
+# NEAR rather than ON them, and the deviation is printed rather than failed.
+#: Keyed by the tag a document puts in `metadata.x_esd.report.oracle`, so which
+#: published result a run is measured against is the DOCUMENT's claim, not this
+#: file's guess. A document with no `oracle` tag (isrm_polygon.esm — its example
+#: emission layer is built by this repository and nobody has published a total
+#: for it) is simply reported, not graded.
+ORACLES = {"inmap_sr_tutorial": (6928.959583, 15623.924632)}
 #: Beyond this the deviation is more than the clean-physics choice can explain.
 #: MEASURED at full scale on 2026-08-19: deathsK 6983.9385617781645 (+0.79%)
 #: and deathsL 15752.315804140908 (+0.82%) against the published totals. The
@@ -73,19 +81,21 @@ ORACLE_L = 15623.924632
 #: contract/compare_results.py.
 ORACLE_NOTABLE_REL = 8.3e-3
 
-#: zarr array name -> (the per-SR-layer emissions observeds, concentration
-#: observed). The emissions side grew a LAYER dimension when the document
-#: started stating plume rise: a record is charged to the SR layer its plume
-#: reaches, so a pathway's emissions are three arrays, not one. The
-#: concentration side did not - ``conc_<p>`` is the document's own sum over the
-#: three layered contractions.
-PW_OBS = [
-    ("SOA", ["E_VOC_L0", "E_VOC_L1", "E_VOC_L2"], "conc_SOA"),
-    ("pNO3", ["E_NOx_L0", "E_NOx_L1", "E_NOx_L2"], "conc_pNO3"),
-    ("pNH4", ["E_NH3_L0", "E_NH3_L1", "E_NH3_L2"], "conc_pNH4"),
-    ("pSO4", ["E_SOx_L0", "E_SOx_L1", "E_SOx_L2"], "conc_pSO4"),
-    ("PrimaryPM25", ["E_PM25_L0", "E_PM25_L1", "E_PM25_L2"], "conc_PrimaryPM25"),
-]
+def report_block(doc: dict) -> dict:
+    """``metadata.x_esd.report`` — what this document says a run should report.
+
+    The one place a pollutant, a pathway or an observed name enters this file,
+    and it enters FROM THE DOCUMENT. A document that declares no ``plume`` gets
+    no plume block; one that claims no published result gets no oracle check.
+    """
+    rep = ((doc.get("metadata") or {}).get("x_esd") or {}).get("report")
+    if not isinstance(rep, dict) or not rep.get("pathways"):
+        raise SystemExit(
+            f"{paths.MODEL}: no metadata.x_esd.report block - this runner reads "
+            "the reported pathway and observed names from the document rather "
+            "than carrying a table of its own"
+        )
+    return rep
 
 
 def log(msg: str) -> None:
@@ -147,14 +157,43 @@ def gated_loader_arrays(doc: dict) -> dict:
     return out
 
 
+def source_parameters(doc: dict, src: str) -> list[tuple[str, dict]]:
+    """Every model PARAMETER fed by data source ``src`` — ``(name, variable)``.
+
+    From esm 1.0.0 a source declares no variables of its own: the binding lives
+    on the consuming parameter as ``update: {kind: "data", source: …}``
+    (esm-spec §6.3), so "what does this source deliver" is answered by walking
+    the models rather than the source.
+    """
+    out: list[tuple[str, dict]] = []
+    for m in (doc.get("models") or {}).values():
+        for vname, v in ((m or {}).get("variables") or {}).items():
+            up = (v or {}).get("update") or {}
+            if up.get("kind") == "data" and up.get("source") == src:
+                out.append((str(vname), v))
+    return out
+
+
 def truncate_records(doc: dict, n: int) -> None:
-    """REDUCED runs: truncate every record-discovering loader to its first ``n``
-    DELIVERED records with a loader-level ``select`` range (esm-spec §8.9.2).
-    Because the selection follows the loader's own ``record_filter``, this picks
-    the same records the previous runners' post-filter ``[:n]`` did — and
-    ``extent`` then re-discovers the smaller N_REC by itself."""
+    """REDUCED runs: truncate every record-discovering source to its first ``n``
+    DELIVERED records with a ``select`` range (esm-spec §8.9.2). Because the
+    selection follows the source's own ``record_filter``, this picks the same
+    records a post-filter ``[:n]`` would — and ``extent`` then re-discovers the
+    smaller N_REC by itself.
+
+    Written on each consuming PARAMETER rather than on the source, because
+    ``select.axes`` is one entry per NATIVE array dimension and a source may
+    deliver arrays of different ranks: the polygon layer's ``geometry`` is
+    ``[record, vertex, xy]`` while its emission column is ``[record]``, so no
+    single source-level list is right for both. The rank comes from the
+    parameter's own declared ``shape``, and the record axis is axis 0 by
+    definition of a record table.
+    """
     for name in record_loaders(doc):
-        doc["data_sources"][name]["select"] = {"axes": [{"range": {"start": 0, "stop": n}}]}
+        for _vname, v in source_parameters(doc, name):
+            rank = len(v.get("shape") or [])
+            axes: list = [{"range": {"start": 0, "stop": n}}] + ["all"] * (rank - 1)
+            v["update"]["from"]["select"] = {"axes": axes}
 
 
 # zarr workaround (unchanged from the validated runners): the SR arrays carry NO
@@ -181,20 +220,24 @@ def main() -> int:
     from earthsci_ast.prepare import observed_field, prepare
     from earthsci_ast.simulation_array import BuildInspection
 
+    with open(paths.MODEL) as fh:
+        doc = json.load(fh)
+    report = report_block(doc)
+    oracle = ORACLES.get(str(report.get("oracle") or ""))
+
     log(
         f"{'REDUCED' if reduced else 'FULL'} run"
         + (
             f" — first {firstn} emission records"
             if reduced
-            else f" — whole domain (target deathsK≈{ORACLE_K:.2f}, deathsL≈{ORACLE_L:.2f})"
+            else " — whole domain"
+            + (f" (target deathsK≈{oracle[0]:.2f}, deathsL≈{oracle[1]:.2f})"
+               if oracle else " (the document claims no published total)")
         )
     )
     log(f"model:   {paths.MODEL}")
     log(f"scratch: {paths.SCRATCH}")
     log(f"cache:   {paths.ESIO_CACHE}")
-
-    with open(paths.MODEL) as fh:
-        doc = json.load(fh)
     if reduced:
         truncate_records(doc, firstn)
 
@@ -213,14 +256,18 @@ def main() -> int:
             doc["data_sources"][lname]["source"]["url_template"],
             arrs,
         )
-    # A local copy of a record loader's source is a LOCALITY choice of this run
-    # (gaftp.epa.gov is slow and flaky), so it is a url_override rather than an
-    # edit to the document.
+    # A local copy of a record source is a LOCALITY choice of this run
+    # (gaftp.epa.gov is slow and flaky; the example polygon layer is built in
+    # this repository and never needs fetching at all), so it is a url_override
+    # rather than an edit to the document — and it is matched by the document's
+    # OWN url basename, so this file names no source.
     url_overrides: dict[str, str] = {}
-    if os.path.isfile(paths.EGU_ZIP):
-        mirror = "file://" + os.path.abspath(paths.EGU_ZIP)
-        url_overrides = {name: mirror for name in record_loaders(doc)}
-        log(f"  record source mirrored from {paths.EGU_ZIP}")
+    for name in record_loaders(doc):
+        url = ((doc["data_sources"][name].get("source") or {}).get("url_template") or "")
+        local = paths.local_mirror(url)
+        if local:
+            url_overrides[name] = "file://" + os.path.abspath(local)
+            log(f"  {name} mirrored from {local}")
     providers = providers_from_document(
         doc, cache_root=paths.ESIO_CACHE, url_overrides=url_overrides
     )
@@ -263,7 +310,7 @@ def main() -> int:
             "that the containment ifelse is the FIRST ifelse in every E_* body."
         )
 
-    n_rec = int(np.asarray(observed_field(prep, "X")).size)
+    n_rec = int(np.asarray(observed_field(prep, report["record_field"])).size)
     log(
         f"PREPARE done in {t_prep:.1f} s  (peak RSS so far: "
         f"{peak_rss_bytes() / 2**30:.2f} GiB)"
@@ -277,35 +324,35 @@ def main() -> int:
     n_ppl = len(members)
     n_src, n_rcv = metaparam(doc, "N_SRC"), metaparam(doc, "N_RCV")
     log(f"engine-derived support set: |members| = {n_ppl} of {n_src} source cells")
-    if not reduced and n_ppl != 1520:
+    if not reduced and oracle and n_ppl != 1520:
         log("  WARNING: expected 1520 emission-bearing cells at full scale")
 
     # ---- results through the prepared document's own graph ------------------
     # (already evaluated by the const-geometry hoist inside prepare; the
     # per-observed timings are in the [ess-observed] log lines above)
     t = time.time()
-    dK = np.asarray(observed_field(prep, "deathsK"), dtype=float)
-    dL = np.asarray(observed_field(prep, "deathsL"), dtype=float)
-    tp = np.asarray(observed_field(prep, "TotalPM25"), dtype=float)
+    def field(name):
+        return np.asarray(observed_field(prep, name), dtype=float)
+
+    dK = field(report["deaths"]["krewski"])
+    dL = field(report["deaths"]["lepeule"])
+    tp = field(report["total_pm25"])
     pathways = {}
     emis_by_layer = {}
-    for arr, evars, cvar in PW_OBS:
-        # A pathway's emissions are now spread over the three SR layers; the
-        # record's `emis_sum` is the pathway TOTAL, so it stays comparable to
-        # the ground-level-only baselines (plume rise moves mass between
-        # layers, never into or out of a pathway).
-        es = [np.asarray(observed_field(prep, v), dtype=float).ravel() for v in evars]
-        ep = np.concatenate(es)
-        cp = np.asarray(observed_field(prep, cvar), dtype=float)
-        pathways[arr] = {
-            "emis_sum": float(ep.sum()),
+    for entry in report["pathways"]:
+        # `emissions` is a LIST: isrm_point.esm splits a pathway across the three
+        # SR emission layers a record's plume falls between, isrm_polygon.esm has
+        # one because an area source emits at the ground. `emis_sum` is the
+        # pathway TOTAL either way, so it stays comparable across both.
+        es = [field(v).ravel() for v in entry["emissions"]]
+        cp = field(entry["concentration"])
+        pathways[str(entry["sr_array"])] = {
+            "emis_sum": float(np.concatenate(es).sum()),
             "conc_sum": float(cp.sum()),
             "conc_max": float(cp.max()),
         }
-        # How much mass plume rise put in each SR layer — the physics made
-        # visible as tons, per pathway.
-        emis_by_layer[arr] = [float(e.sum()) for e in es]
-    # The layer assignment itself — now a SPLIT, not a single layer: InMAP's
+        emis_by_layer[str(entry["sr_array"])] = [float(e.sum()) for e in es]
+    # The layer assignment itself — a SPLIT, not a single layer: InMAP's
     # sr.Reader.layerFracs charges a record to two SR layers whenever its model
     # layer falls between two entries of `layers`. `sr_lower` is the lower index
     # (integer, compared exactly) and w_sr0/1/2 are the three shares. These are
@@ -314,16 +361,18 @@ def main() -> int:
     # the point of the contract's `plume` block is that the ENGINE produced the
     # assignment from the spec. contract/plume_oracle.py computes the same
     # quantity independently, from the meteorology arrays and without the SR
-    # matrix, and compare_results.py checks the two against each other.
-    def per_record(name):
-        return np.asarray(observed_field(prep, name), dtype=float).ravel()
-
-    plume = contract.plume_block(
-        sr_lower=per_record("sr_lower"),
-        stack_layer=per_record("stack_layer"),
-        weights={w: per_record(w) for w in ("w_sr0", "w_sr1", "w_sr2")},
-        emis_by_sr_layer=emis_by_layer,
-    )
+    # matrix, and compare_results.py checks the two against each other. A
+    # document with no plume rise to state — an area source has no stack —
+    # declares no `plume` key and emits no `plume` block.
+    plume = None
+    if isinstance(report.get("plume"), dict):
+        pl = report["plume"]
+        plume = contract.plume_block(
+            sr_lower=field(pl["sr_lower"]).ravel(),
+            stack_layer=field(pl["stack_layer"]).ravel(),
+            weights={w: field(w).ravel() for w in pl["weights"]},
+            emis_by_sr_layer=emis_by_layer,
+        )
     t_eval = time.time() - t
     log(f"field readback in {t_eval:.1f} s")
 
@@ -332,11 +381,13 @@ def main() -> int:
     log(f"  sum(deathsK) = {sK!r}")
     log(f"  sum(deathsL) = {sL!r}")
     log(f"  Σ TotalPM25  = {float(tp.sum())!r}")
-    if not reduced:
-        rk = (sK - ORACLE_K) / ORACLE_K
-        rl = (sL - ORACLE_L) / ORACLE_L
-        log(f"  tutorial deathsK={ORACLE_K}  deviation {100 * rk:.6f}%")
-        log(f"  tutorial deathsL={ORACLE_L} deviation {100 * rl:.6f}%")
+    log("  Σ emitted    = "
+        + " / ".join(f"{k} {v['emis_sum']!r}" for k, v in sorted(pathways.items())))
+    if not reduced and oracle:
+        ok, ol = oracle
+        rk, rl = (sK - ok) / ok, (sL - ol) / ol
+        log(f"  tutorial deathsK={ok}  deviation {100 * rk:.6f}%")
+        log(f"  tutorial deathsL={ol} deviation {100 * rl:.6f}%")
         if abs(rk) > ORACLE_NOTABLE_REL or abs(rl) > ORACLE_NOTABLE_REL:
             log(
                 f"  WARNING: deviation exceeds {100 * ORACLE_NOTABLE_REL:.2f}% - "
@@ -344,25 +395,30 @@ def main() -> int:
                 "(0.43% of emitted mass, +0.79%/+0.82% of deaths at full scale), "
                 "so something else differs."
             )
-    log("  lower-SR-layer histogram (records per layer 0/1/2) = "
-        f"{plume['sr_lower']['histogram']}")
-    log(f"  sr_lower sha256 = {plume['sr_lower']['sha256']}")
-    log("  Σ w_sr0/w_sr1/w_sr2 = "
-        + " / ".join(repr(plume["weights"][w]["sum"])
-                     for w in ("w_sr0", "w_sr1", "w_sr2"))
-        + f"   max|Σw - 1| = {plume['weights']['max_sum_error']!r}")
-    log(
-        "    (check it against `python3 contract/plume_oracle.py"
-        + (f" --firstn {firstn}`" if reduced else "`")
-        + " — no SR matrix needed)"
-    )
+    if plume is not None:
+        log("  lower-SR-layer histogram (records per layer 0/1/2) = "
+            f"{plume['sr_lower']['histogram']}")
+        log(f"  sr_lower sha256 = {plume['sr_lower']['sha256']}")
+        log("  Σ w_sr0/w_sr1/w_sr2 = "
+            + " / ".join(repr(plume["weights"][w]["sum"])
+                         for w in report["plume"]["weights"])
+            + f"   max|Σw - 1| = {plume['weights']['max_sum_error']!r}")
+        log(
+            "    (check it against `python3 contract/plume_oracle.py"
+            + (f" --firstn {firstn}`" if reduced else "`")
+            + " — no SR matrix needed)"
+        )
     log("=" * 70)
 
     # ---- contract record ----------------------------------------------------
     import earthsci_ast
 
+    # Named after the MODEL, because two documents share this shim and must not
+    # share one record file: isrm_point.esm and isrm_polygon.esm answer
+    # different questions over the same grid.
+    stem = os.path.splitext(os.path.basename(paths.MODEL))[0]
     out = os.path.join(
-        paths.RUNPY_DIR, "results_reduced.json" if reduced else "results.json"
+        paths.RUNPY_DIR, f"results_{stem}{'_reduced' if reduced else ''}.json"
     )
     contract.write_results(
         out,

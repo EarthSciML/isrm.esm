@@ -2,7 +2,7 @@
   "esm": "1.0.0",
   "metadata": {
     "name": "ISRM_base",
-    "description": "The geometry-independent half of the InMAP ISRM source-receptor model, as a TEMPLATE-LIBRARY file (esm-spec 9.7.1): the expression fragments every emission geometry shares \u2014 the Lambert-conformal forward projection, the cell-containment indicator, the layer-major meteorology gather, the source-receptor contraction term, the ug/m3 scaling and the log-linear concentration-response function. A consuming document (isrm_point.esm, and the polygon / line siblings) imports this file, declares its own variables, equations and data_sources, and spells the shared math as apply_expression_template call sites. WHY A LIBRARY AND NOT A MOUNTED SUBSYSTEM: a library file may not declare models or data_sources (9.7.1), so those are duplicated per consumer \u2014 but the projection-pushdown desugar reads ONE model's own variables and observeds, before flattening (pushdown_rewrite.jl _pd_detect, simulate.jl prepare). Split the SR arrays or the binning aggregates behind a component boundary and the rewrite stops recognising the pattern, the derived support set is never built, and the SR fetch goes from 1520 source rows to the whole 52411-row matrix. Templates are safe where a subsystem is not: detection expands apply_expression_template references before matching, and emission edits the CALL SITE's bindings, never the shared body (conformance fixture pushdown/template_body).",
+    "description": "The geometry-independent half of the InMAP ISRM source-receptor model, as a TEMPLATE-LIBRARY file (esm-spec 9.7.1): the expression fragments every emission geometry shares \u2014 the Lambert-conformal forward projection, the source-receptor contraction term, the ug/m3 scaling and the log-linear concentration-response function \u2014 plus the fragments each GEOMETRY needs: point containment and the layer-major meteorology gather for a stack inventory, and rectangle overlap, ring construction, the overlap share and a shoelace term for an area one. A consuming document (isrm_point.esm, isrm_polygon.esm, and a future line sibling) imports this file, declares its own variables, equations and data_sources, and spells the shared math as apply_expression_template call sites. WHY A LIBRARY AND NOT A MOUNTED SUBSYSTEM: a library file may not declare models or data_sources (9.7.1), so those are duplicated per consumer \u2014 but the projection-pushdown desugar reads ONE model's own variables and observeds, before flattening (pushdown_rewrite.jl _pd_detect, simulate.jl prepare). Split the SR arrays or the binning aggregates behind a component boundary and the rewrite stops recognising the pattern, the derived support set is never built, and the SR fetch goes from 1520 source rows to the whole 52411-row matrix. Templates are safe where a subsystem is not: detection expands apply_expression_template references before matching, and emission edits the CALL SITE's bindings, never the shared body (conformance fixture pushdown/template_body).",
     "authors": [
       "EarthSciML"
     ],
@@ -890,6 +890,403 @@
             ]
           },
           2
+        ]
+      }
+    },
+    "cell_overlaps_box": {
+      "description": "1.0 when cell c's rectangle [xmin, xmax] x [ymin, ymax] and record r's envelope [bxmin, bxmax] x [bymin, bymax] overlap, else 0.0. This is the AREA-source counterpart of `cell_contains_point`: a polygon or a line touches many cells, so the binning aggregate's gate is a rectangle overlap rather than a containment, and it is CLOSED on every edge (a shared boundary is a candidate pair on both sides) because the gate is a BROAD PHASE - the exact share is decided afterwards by `polygon_intersection_area`, which returns 0 for a touching-but-not-overlapping pair. Conservative is the requirement; tight is not. Like `cell_contains_point` this must stay a conjunction of comparisons between a cell-indexed bound and a record-indexed bound, in this argument order: it is what the projection-pushdown recogniser reads off the enclosing aggregate to derive the emission-bearing support set and the SR gate (CONFORMANCE_SPEC 5.5.6, envelope arity 4).",
+      "params": [
+        "xmin",
+        "ymin",
+        "xmax",
+        "ymax",
+        "bxmin",
+        "bymin",
+        "bxmax",
+        "bymax"
+      ],
+      "body": {
+        "op": "ifelse",
+        "args": [
+          {
+            "op": "and",
+            "args": [
+              {
+                "op": "<=",
+                "args": [
+                  {
+                    "op": "index",
+                    "args": [
+                      "xmin",
+                      "c"
+                    ]
+                  },
+                  {
+                    "op": "index",
+                    "args": [
+                      "bxmax",
+                      "r"
+                    ]
+                  }
+                ]
+              },
+              {
+                "op": "<=",
+                "args": [
+                  {
+                    "op": "index",
+                    "args": [
+                      "bxmin",
+                      "r"
+                    ]
+                  },
+                  {
+                    "op": "index",
+                    "args": [
+                      "xmax",
+                      "c"
+                    ]
+                  }
+                ]
+              },
+              {
+                "op": "<=",
+                "args": [
+                  {
+                    "op": "index",
+                    "args": [
+                      "ymin",
+                      "c"
+                    ]
+                  },
+                  {
+                    "op": "index",
+                    "args": [
+                      "bymax",
+                      "r"
+                    ]
+                  }
+                ]
+              },
+              {
+                "op": "<=",
+                "args": [
+                  {
+                    "op": "index",
+                    "args": [
+                      "bymin",
+                      "r"
+                    ]
+                  },
+                  {
+                    "op": "index",
+                    "args": [
+                      "ymax",
+                      "c"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          1.0,
+          0.0
+        ]
+      }
+    },
+    "ring_xy": {
+      "description": "One component of a ring vertex: `x` when the xy-axis symbol `d` is at position 1, `y` when it is at position 2. Written as a dot product with two inline `const` selectors rather than `ifelse(d == 1, x, y)` because an index symbol is a POSITION, not a value: routing every use of `d` through an `index(...)` slot is the spelling all three bindings agree on. Both branches are evaluated either way - `ifelse` does not guard its arms inside an `aggregate` in any binding - so the selector costs nothing the conditional would have saved. `x` and `y` are bound to expressions, not names, so the caller decides where the coordinates come from.",
+      "params": [
+        "x",
+        "y"
+      ],
+      "body": {
+        "op": "+",
+        "args": [
+          {
+            "op": "*",
+            "args": [
+              {
+                "op": "index",
+                "args": [
+                  {
+                    "op": "const",
+                    "value": [
+                      1.0,
+                      0.0
+                    ],
+                    "args": []
+                  },
+                  "d"
+                ]
+              },
+              "x"
+            ]
+          },
+          {
+            "op": "*",
+            "args": [
+              {
+                "op": "index",
+                "args": [
+                  {
+                    "op": "const",
+                    "value": [
+                      0.0,
+                      1.0
+                    ],
+                    "args": []
+                  },
+                  "d"
+                ]
+              },
+              "y"
+            ]
+          }
+        ]
+      }
+    },
+    "rect_ring_xy": {
+      "description": "Cell c's rectangle as a four-vertex RING, evaluated at ring-vertex `v` and xy component `d`: (xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax) - counter-clockwise, no closing duplicate (`polygon_intersection_area` closes the ring implicitly, esm-spec 8.6.1). The four inline `const` selectors pick which edge each corner takes from, for the same reason `ring_xy` uses them. A grid of rectangles has no ring array on disk; this is how a document makes one, and the result is an ordinary cell-axis array the projection-pushdown rewrite gathers onto the derived support set along with the envelope bounds (CONFORMANCE_SPEC 5.5.7).",
+      "params": [
+        "xmin",
+        "ymin",
+        "xmax",
+        "ymax"
+      ],
+      "body": {
+        "op": "apply_expression_template",
+        "args": [],
+        "name": "ring_xy",
+        "bindings": {
+          "x": {
+            "op": "+",
+            "args": [
+              {
+                "op": "*",
+                "args": [
+                  {
+                    "op": "index",
+                    "args": [
+                      {
+                        "op": "const",
+                        "value": [
+                          1.0,
+                          0.0,
+                          0.0,
+                          1.0
+                        ],
+                        "args": []
+                      },
+                      "v"
+                    ]
+                  },
+                  {
+                    "op": "index",
+                    "args": [
+                      "xmin",
+                      "c"
+                    ]
+                  }
+                ]
+              },
+              {
+                "op": "*",
+                "args": [
+                  {
+                    "op": "index",
+                    "args": [
+                      {
+                        "op": "const",
+                        "value": [
+                          0.0,
+                          1.0,
+                          1.0,
+                          0.0
+                        ],
+                        "args": []
+                      },
+                      "v"
+                    ]
+                  },
+                  {
+                    "op": "index",
+                    "args": [
+                      "xmax",
+                      "c"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "y": {
+            "op": "+",
+            "args": [
+              {
+                "op": "*",
+                "args": [
+                  {
+                    "op": "index",
+                    "args": [
+                      {
+                        "op": "const",
+                        "value": [
+                          1.0,
+                          1.0,
+                          0.0,
+                          0.0
+                        ],
+                        "args": []
+                      },
+                      "v"
+                    ]
+                  },
+                  {
+                    "op": "index",
+                    "args": [
+                      "ymin",
+                      "c"
+                    ]
+                  }
+                ]
+              },
+              {
+                "op": "*",
+                "args": [
+                  {
+                    "op": "index",
+                    "args": [
+                      {
+                        "op": "const",
+                        "value": [
+                          0.0,
+                          0.0,
+                          1.0,
+                          1.0
+                        ],
+                        "args": []
+                      },
+                      "v"
+                    ]
+                  },
+                  {
+                    "op": "index",
+                    "args": [
+                      "ymax",
+                      "c"
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    "area_share": {
+      "description": "The fraction of record r's polygon that lies inside cell c: the overlap area of `rec_ring`[r] with `cell_ring`[c] over the record's own area `rec_area`[r]. This is the AREA-WEIGHTED allocation an area source needs, and it is mass-conserving: summed over a cell set that covers the polygon the shares are 1, so a polygon lying entirely inside the grid delivers exactly its declared emission. Both operands are vertex rings in the SAME planar coordinate system - project first, then clip - so `manifold: planar` is the honest choice, and the projection's local scale factor cancels in the ratio. OPERAND ORDER IS LOAD-BEARING AND NOT SYMMETRIC: `polygon_intersection_area(a, b)` clips subject `a` against `b`, and the planar kernel is a Sutherland-Hodgman clipper, which requires the CLIP operand to be CONVEX and silently returns the convex-hull-edge intersection when it is not. A grid cell is an axis-aligned rectangle and always convex; a real-world polygon - a county, a watershed, a state - very often is not. So the record ring is the subject and the cell ring is the clip, never the other way round. Measured on the shipped Illinois layer, getting this backwards understates a non-convex county's area by up to 4x, and does it CONSISTENTLY in numerator and denominator, so the shares still sum to 1 and mass conservation does not catch it.",
+      "params": [
+        "cell_ring",
+        "rec_ring",
+        "rec_area"
+      ],
+      "body": {
+        "op": "/",
+        "args": [
+          {
+            "op": "polygon_intersection_area",
+            "manifold": "planar",
+            "args": [
+              {
+                "op": "index",
+                "args": [
+                  "rec_ring",
+                  "r"
+                ]
+              },
+              {
+                "op": "index",
+                "args": [
+                  "cell_ring",
+                  "c"
+                ]
+              }
+            ]
+          },
+          {
+            "op": "index",
+            "args": [
+              "rec_area",
+              "r"
+            ]
+          }
+        ]
+      }
+    },
+    "ring_cross_term": {
+      "description": "One shoelace term of record r's ring at segment v: x[r,v]*y[r,v+1] - x[r,v+1]*y[r,v]. Summed over the ring's segments and halved in absolute value it is the ring's planar area. WHY NOT `polygon_intersection_area` OF A RING WITH ITSELF: that is the natural spelling and it is WRONG for a non-convex ring, because the planar kernel clips against a convex clip operand and a ring clipped against itself makes itself the clip (see `area_share`). The shoelace has no convexity precondition, is exact in the ring's own coordinates, and needs no geometry kernel at all. TWO PROPERTIES OF THE STORED RING MAKE IT CORRECT AS WRITTEN. First, the sum omits the wrap term x[N]*y[1] - x[1]*y[N]: an ESRI shapefile ring is EXPLICITLY CLOSED (the Shapefile Technical Description requires the final vertex to repeat the first) and the reader preserves that vertex, so the closing edge is already one of the segments and the omitted term is the cross product of the first vertex with itself, which is zero. Second, the right-padding that fills a short ring out to the declared width repeats the FINAL vertex - which is the first vertex - so every padded segment contributes the cross product of a point with itself, also zero. The segment range must therefore be one SHORTER than the vertex axis, so that v+1 stays in bounds.",
+      "params": [
+        "x",
+        "y"
+      ],
+      "body": {
+        "op": "-",
+        "args": [
+          {
+            "op": "*",
+            "args": [
+              {
+                "op": "index",
+                "args": [
+                  "x",
+                  "r",
+                  "v"
+                ]
+              },
+              {
+                "op": "index",
+                "args": [
+                  "y",
+                  "r",
+                  {
+                    "op": "+",
+                    "args": [
+                      "v",
+                      1
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "op": "*",
+            "args": [
+              {
+                "op": "index",
+                "args": [
+                  "x",
+                  "r",
+                  {
+                    "op": "+",
+                    "args": [
+                      "v",
+                      1
+                    ]
+                  }
+                ]
+              },
+              {
+                "op": "index",
+                "args": [
+                  "y",
+                  "r",
+                  "v"
+                ]
+              }
+            ]
+          }
         ]
       }
     }

@@ -1,6 +1,5 @@
 Manifest.toml
-results.json
-results_reduced.json
+results*.json
 *.log
 cache_*/
 checkpoints/

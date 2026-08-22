@@ -68,6 +68,73 @@
         "earth_radius": 6370997.0,
         "false_easting": 0.0,
         "false_northing": 0.0
+      },
+      "report": {
+        "description": "What a run reports, in the document's own vocabulary. The three shims emit one cross-language contract record (contract/results_schema.json) and must name no pollutant, no pathway and no observed of their own - this block is where those names live, so the same shim drives this document and its geometry siblings (isrm_polygon.esm) without a table of either inside it. `pathways` lists one entry per SR array the model contracts with: `emissions` are the per-source-cell emission observeds that feed it - three here, one per SR emission layer, because plume rise splits a record's mass across the layers its plume falls between - and `concentration` is the receptor-side result, which this document has already summed over the three layers. `plume` names the per-record observeds the record's plume block is built from; a document with no plume rise simply omits the key. `oracle` names the PUBLISHED RESULT this document claims to reproduce, as a tag, not as a number: the numbers and their tolerances belong to the comparison and live in the shims and contract/compare_results.py, because a model must not carry its own answer.",
+        "pathways": [
+          {
+            "sr_array": "SOA",
+            "emissions": [
+              "E_VOC_L0",
+              "E_VOC_L1",
+              "E_VOC_L2"
+            ],
+            "concentration": "conc_SOA"
+          },
+          {
+            "sr_array": "pNO3",
+            "emissions": [
+              "E_NOx_L0",
+              "E_NOx_L1",
+              "E_NOx_L2"
+            ],
+            "concentration": "conc_pNO3"
+          },
+          {
+            "sr_array": "pNH4",
+            "emissions": [
+              "E_NH3_L0",
+              "E_NH3_L1",
+              "E_NH3_L2"
+            ],
+            "concentration": "conc_pNH4"
+          },
+          {
+            "sr_array": "pSO4",
+            "emissions": [
+              "E_SOx_L0",
+              "E_SOx_L1",
+              "E_SOx_L2"
+            ],
+            "concentration": "conc_pSO4"
+          },
+          {
+            "sr_array": "PrimaryPM25",
+            "emissions": [
+              "E_PM25_L0",
+              "E_PM25_L1",
+              "E_PM25_L2"
+            ],
+            "concentration": "conc_PrimaryPM25"
+          }
+        ],
+        "total_pm25": "TotalPM25",
+        "deaths": {
+          "krewski": "deathsK",
+          "lepeule": "deathsL"
+        },
+        "record_field": "X",
+        "record_field_description": "An observed over the RECORD axis, whose length IS the number of emission records the sources discovered. `extent` binds that count to N_REC inside the engine, but no binding exposes the resolved metaparameter on its prepared model, so a runner that must report it reads the length of a field over that axis instead - named here, because which field it is depends on the geometry.",
+        "plume": {
+          "sr_lower": "sr_lower",
+          "stack_layer": "stack_layer",
+          "weights": [
+            "w_sr0",
+            "w_sr1",
+            "w_sr2"
+          ]
+        },
+        "oracle": "inmap_sr_tutorial"
       }
     }
   },

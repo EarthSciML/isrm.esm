@@ -135,8 +135,9 @@ pub fn weight_sum_error(w: &[&[f64]; 3]) -> Result<f64, String> {
 /// `sr_lower`, `stack_layer` and the three `weights` fields are per-record
 /// observeds read straight off the graph — nothing here recomputes plume rise,
 /// and nothing here knows what ASME is. `weights` is `[w_sr0, w_sr1, w_sr2]`;
-/// `emis_by_sr_layer` maps each SR array name to the three
-/// `sum(E_<pathway>_L<layer>)` totals, in layer order.
+/// `emis_by_sr_layer` maps each SR array name to its `sum(E_<pathway>_L<layer>)`
+/// totals in layer order — three for a document that states plume rise, which
+/// is the only kind that has a plume block at all.
 ///
 /// Two digests are integer sequences in record order, hashed the way `ppl` is,
 /// so they can be compared EXACTLY — against the other bindings and against
@@ -148,7 +149,7 @@ pub fn plume_block(
     sr_lower: &[f64],
     stack_layer: &[f64],
     weights: &[&[f64]; 3],
-    emis_by_sr_layer: &BTreeMap<String, [f64; 3]>,
+    emis_by_sr_layer: &BTreeMap<String, Vec<f64>>,
 ) -> Result<Value, String> {
     let sr = as_int_seq(sr_lower, "sr_lower")?;
     let sl = as_int_seq(stack_layer, "stack_layer")?;

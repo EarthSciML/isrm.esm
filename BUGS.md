@@ -532,6 +532,72 @@ descriptions now say why, where four used to say the opposite.
   `_geo_index_extent` did not follow a `kind:"derived"` set through its
   `from_faq`, which is how `derived_extents` is keyed. Rust needed none of these
   — its dense evaluator computes the geometry inline.
+* **The geometry kernels' vertex tolerance is relative to the COORDINATE, so it
+  merges real vertices in a projected frame.** Before either kernel clips, it
+  deduplicates each operand ring's consecutive vertices under the tolerance
+  esm-spec §8.6.1 pins — numpy's `allclose` defaults, `atol 1e-8` and
+  `rtol 1e-5` — which is what makes the shapefile reader's repeat-padding free.
+  §8.6.1 states the operands in **lon/lat**, where a coordinate is order 100. A
+  conservative regrid between PROJECTED grids — the dominant real use of
+  `polygon_intersection_area`, and what `isrm_polygon.esm` does — has
+  coordinates of order 1e6, where `rtol 1e-5` is about **6 metres**, and two
+  genuinely distinct vertices closer than that are silently merged. Measured on
+  the shipped Illinois layer: 3 of 1279 vertices merged, in 3 of 102 rings, all
+  on edges shorter than 4 m against a median edge of 2.4 km. Because the
+  numerator (a clipped share) is then computed against a slightly simplified
+  ring while the denominator (a shoelace over the ring as stored) is not, the
+  per-cell shares stop summing to exactly 1: `sum(E_PM25)` lands **6.1e-7 below**
+  `sum(poly_emis)`, and 4 of 2053 emitting cells differ from an independent GEOS
+  computation by more than 1e-8 relative, worst 1.0e-4 — the next-worst cell is
+  at 8e-9, which is ordinary float difference between two clipping algorithms
+  and not a merged vertex. Small, but silent, and
+  it grows with the distance from the projection origin. The fix belongs in the
+  kernels — a tolerance relative to the RING's own extent, not to the magnitude
+  of its coordinates — and it is a spec change (§8.6.1, CONFORMANCE_SPEC, the
+  BEHAV-08-A-001 pin) plus three kernels, so `isrm_polygon.esm` names and
+  measures it instead: `metadata.x_esd.vertex_tolerance`.
+* **`polygon_intersection_area` is documented as symmetric and is not.** §8.6.1
+  defines it as `polygon_area(intersect_polygon(a, b))` and describes both
+  arguments as "the two operand polygons", with no condition on either. The
+  planar kernel is a Sutherland–Hodgman clipper, which requires the **clip**
+  operand — `args[1]` — to be **CONVEX**, and silently returns the
+  convex-hull-edge intersection when it is not. Only a Python docstring says so
+  (`geometry.py::_planar_clip`, "a non-convex clip operand would silently give
+  the convex-edge intersection and is out of contract"). A grid cell is convex;
+  a county, a watershed or a state is very often not, so the natural spellings
+  `polygon_intersection_area(cell_ring[c], poly_ring[r])` and — worse —
+  `polygon_intersection_area(ring[r], ring[r])` for a polygon's own area are
+  both wrong for real data. Measured while writing `isrm_polygon.esm`: the
+  self-clip understated Putnam County's area by **4x** and Richland's by 1.6x,
+  and it did so CONSISTENTLY in numerator and denominator, so the shares still
+  summed to 1 and mass conservation did not catch it. The document now clips
+  record-as-subject against cell-as-clip and gets its polygon areas from a
+  shoelace, which has no convexity precondition; §8.6.1 should say the condition
+  out loud, and the kernels should refuse a non-convex clip operand rather than
+  answer.
+* ~~**Julia could not read an observed the build materialized at setup.**~~
+  **FIXED 2026-08-21.** A body carrying a geometry leaf is materialized into
+  `insp.setup_arrays` rather than left as a build-time observed — and so,
+  transitively, is everything downstream of it, because a setup array is a build
+  constant. `observed_field` looked only at the observed graph, so on a document
+  whose emissions come from an area overlap rather than a point containment that
+  was the WHOLE reported chain: `E_PM25`, `conc_PrimaryPM25`, `TotalPM25`,
+  `deathsK` and `deathsL` were all unreadable BY NAME, with
+  `'…' is not a build-time-evaluable observed`, even though the build had
+  computed every one of them. Python and Rust return all five. `observed_field`
+  now falls back to the setup array — resolved by name tail, because the setup
+  pass keys on the AUTHORED model name (`ISRM.E_PM25`) and flattening has since
+  renamed the model to `Flattened` — flattened in the same row-major cell order
+  the observed path returns.
+* **A source-level `select` cannot serve a source whose arrays differ in rank.**
+  §8.9.2 says one entry per NATIVE array dimension, and `data_sources.<s>.select`
+  is "the default for every parameter drawing from it". The shapefile source
+  delivers `geometry` as `[record, vertex, xy]` and its emission column as
+  `[record]`, so no single axes list is right for both and truncating a reduced
+  run at the source raises `the declared select has 1 axes but the array is rank
+  3`. Not a bug so much as a sharp edge with no diagnostic pointing at the fix:
+  the three shims now write the truncation on each consuming PARAMETER, taking
+  the rank from the parameter's own declared `shape`.
 * **A nested `aggregate` is not a portable geometry operand.** Building the cell
   ring inline inside the binning body was one of the three escapes probed while
   the item above was open; the rank-preserving gather makes it unnecessary, but
