@@ -7,7 +7,7 @@
 // count and no observed — the document's `metadata.x_esd.report` block names
 // what a run reports, so the same shim drives either geometry.
 //
-//   * `prepare(doc, {}, providers, pushdown_rewrite: true)` — the automatic
+//   * `esm_problem(doc, tspan, {providers, pushdown_rewrite: true})` — the automatic
 //     projection-pushdown rewrite runs inside the engine; the SR provider
 //     gates derive from the rewrite's own record
 //     (`metadata.x_esd.pushdown.gated_select`), so this file hand-authors NO
@@ -40,7 +40,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::time::Instant;
 
 use earthsci_ast::esio_provider::providers_from_document;
-use earthsci_ast::prepare::{PrepareOptions, PrepareProvider, prepare};
+use earthsci_ast::prepare::PrepareProvider;
+use earthsci_ast::problem::{esm_problem, observed_field, ProblemOptions};
 use serde_json::{Value, json};
 
 /// One reported pathway, as the DOCUMENT names it.
@@ -342,19 +343,27 @@ fn run() -> Result<(), String> {
     let t_providers = t.elapsed().as_secs_f64();
 
     // ---- PREPARE (extent -> rewrite -> coords -> VI -> gated fetch -> graph)-
-    println!("prepare(pushdown_rewrite=true) — N_REC discovered by the loader ...");
+    println!("esm_problem(pushdown_rewrite=true) — N_REC discovered by the loader ...");
     let t = Instant::now();
     let boxed: Vec<(String, Box<dyn PrepareProvider>)> = providers
         .into_iter()
         .map(|(k, p)| (k, Box::new(p) as Box<dyn PrepareProvider>))
         .collect();
-    let opts = PrepareOptions {
+    // EarthSciAST phase 4: `prepare` is replaced by problem CONSTRUCTION, which
+    // absorbs the same pipeline. Providers move from a positional argument onto
+    // `build_providers`, and `tspan` is the one genuinely new input -- this
+    // driver never integrates, so it is nominal and nothing reads it. The
+    // document declares no `D(...)` equation, so the default `Compile::Auto`
+    // skips the right-hand-side compile, and with `default-features = false`
+    // this crate never links the solver at all.
+    let opts = ProblemOptions {
         base_path: model_path.parent().map(|p| p.to_path_buf()),
         pushdown_rewrite: true,
         verbose: true,
+        build_providers: boxed,
         ..Default::default()
     };
-    let prep = prepare(&doc, HashMap::new(), boxed, &opts).map_err(|e| e.to_string())?;
+    let prep = esm_problem(&doc, (0.0, 1.0), opts).map_err(|e| e.to_string())?;
 
     // ---- the gate covers EVERY declared SR array ---------------------------
     // A malformed `E_*` or `conc_*` body does not fail: the pathway simply
@@ -364,7 +373,7 @@ fn run() -> Result<(), String> {
     // The document says how many arrays it declared for gating; anything less
     // here is that silent drop, so stop on it.
     let expect_gated = declared_gated_arrays(&doc);
-    let gated: Vec<String> = prep.doc["metadata"]["x_esd"]["pushdown"]["gated_select"]
+    let gated: Vec<String> = prep.document()["metadata"]["x_esd"]["pushdown"]["gated_select"]
         ["applies_to"]
         .as_array()
         .map(|a| {
@@ -384,8 +393,7 @@ fn run() -> Result<(), String> {
         ));
     }
 
-    let n_rec = prep
-        .observed_field(&report.record_field)
+    let n_rec = observed_field(&prep, &report.record_field)
         .map(|a| a.len())
         .map_err(|e| format!("no field over the record axis to size N_REC from: {e}"))?;
     let t_prep = t.elapsed().as_secs_f64();
@@ -395,12 +403,12 @@ fn run() -> Result<(), String> {
     );
 
     // ---- the engine-derived support set (for the contract record) -----------
-    let producer_id = prep.doc["metadata"]["x_esd"]["pushdown"]["producer_id"]
+    let producer_id = prep.document()["metadata"]["x_esd"]["pushdown"]["producer_id"]
         .as_str()
         .ok_or("no metadata.x_esd.pushdown record — did the rewrite fire?")?
         .to_string();
     let mut members: Vec<i64> = prep
-        .members
+        .members()
         .get(&producer_id)
         .ok_or_else(|| format!("no value-invention members for {producer_id}"))?
         .clone();
@@ -415,8 +423,7 @@ fn run() -> Result<(), String> {
 
     // ---- results through the prepared document's own graph ------------------
     let field = |n: &str| -> Result<Vec<f64>, String> {
-        Ok(prep
-            .observed_field(n)
+        Ok(observed_field(&prep, n)
             .map_err(|e| e.to_string())?
             .iter()
             .copied()
