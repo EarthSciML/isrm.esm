@@ -591,7 +591,7 @@ fn run() -> Result<(), String> {
         &tp,
         &dk,
         &dl,
-        &format!("rust / earthsci-ast {}", env!("CARGO_PKG_VERSION")),
+        &format!("rust / earthsci-ast {}", earthsci_ast::LIBRARY_VERSION),
         plume.as_ref(),
         &timing,
     )?;

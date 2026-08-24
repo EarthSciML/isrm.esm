@@ -253,7 +253,7 @@ function main()
     # stop before the fetch instead of after it.
     expect_gated = sum(length(v) for v in values(gated); init=0)
     rewritten = EA.desugar_pushdown(EA.serialize_esm_file(
-        EA.load(doc_raw; base_path=ISRM_DIR)))
+        EA.load_document(doc_raw; base_path=ISRM_DIR)))
     applies = get(get(get(get(get(rewritten, "metadata", Dict()), "x_esd", Dict()),
                           "pushdown", Dict()), "gated_select", Dict()), "applies_to", [])
     gated_now = String[String(a) for a in applies]
@@ -387,7 +387,7 @@ function main()
     stem = splitext(basename(MODEL))[1]
     out = joinpath(@__DIR__, "results_$(stem)$(reduced ? "_reduced" : "").json")
     write_results(out;
-        binding_version = "julia $(VERSION) / EarthSciAST $(pkgversion(EarthSciAST))",
+        binding_version = "julia $(VERSION) / EarthSciAST $(EarthSciAST.LIBRARY_VERSION)",
         model = MODEL, mode = "runtime_observed_graph",
         n_src = n_src, n_rcv = n_rcv, n_rec = N_REC,
         ppl = members,

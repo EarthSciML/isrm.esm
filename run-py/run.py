@@ -424,7 +424,7 @@ def main() -> int:
         out,
         binding_version=(
             f"python {sys.version.split()[0]} / earthsci_ast "
-            f"{getattr(earthsci_ast, '__version__', '?')}"
+            f"{getattr(earthsci_ast, 'LIBRARY_VERSION', '?')}"
         ),
         model=paths.MODEL,
         mode="runtime_observed_graph",
