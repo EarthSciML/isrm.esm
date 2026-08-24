@@ -8,7 +8,7 @@
 # count and no observed — the document's `metadata.x_esd.report` block names
 # what a run reports, so the same shim drives either geometry.
 #
-#   * `prepare(doc, providers=…, pushdown_rewrite=True)` — the automatic
+#   * `esm_problem(doc, tspan, providers=…, pushdown_rewrite=True)` — the automatic
 #     projection-pushdown rewrite runs inside the engine; the SR provider gates
 #     are derived from the rewrite's own record
 #     (`metadata.x_esd.pushdown.gated_select`), so this file hand-authors NO
@@ -217,7 +217,7 @@ def main() -> int:
     os.environ.setdefault("ESS_OBSERVED_PROGRESS", "1")  # per-observed hoist logs
 
     from earthsci_ast.data_sources.esio_provider import providers_from_document
-    from earthsci_ast.prepare import observed_field, prepare
+    from earthsci_ast.problem import esm_problem, observed_field
     from earthsci_ast.simulation_array import BuildInspection
 
     with open(paths.MODEL) as fh:
@@ -275,11 +275,18 @@ def main() -> int:
     t_providers = time.time() - t
 
     # ---- PREPARE (extent → rewrite → VI → gated fetch → observed-graph) -----
-    log("prepare(pushdown_rewrite=True) — N_REC discovered by the loader ...")
+    log("esm_problem(pushdown_rewrite=True) — N_REC discovered by the loader ...")
     insp = BuildInspection()
     t = time.time()
-    prep = prepare(
+    # EarthSciAST phase 4: `prepare` is replaced by problem CONSTRUCTION, which
+    # absorbs the same pipeline (extent -> rewrite -> value invention -> gated
+    # fetch -> observed graph). The only new argument is `tspan`, which
+    # `prepare` did not take; this driver never integrates, so the interval is
+    # nominal and nothing here reads it. It does keep `sample_time` at 0.0,
+    # since that now defaults to tspan[0].
+    prep = esm_problem(
         doc,
+        (0.0, 1.0),
         providers=providers,
         inspect=insp,
         pushdown_rewrite=True,

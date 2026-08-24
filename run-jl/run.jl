@@ -8,7 +8,7 @@
 # count and no observed — the document's `metadata.x_esd.report` block names
 # what a run reports, so the same shim drives either geometry.
 #
-#   * `prepare(doc; providers, pushdown_rewrite=true)` — the automatic
+#   * `esm_problem(doc, tspan; providers, pushdown_rewrite=true)` — the automatic
 #     projection-pushdown rewrite runs inside the engine; the SR provider gates
 #     are derived from the rewrite's own record
 #     (`metadata.x_esd.pushdown.gated_select`), so this file hand-authors NO
@@ -245,10 +245,10 @@ function main()
     # document says how many arrays it declared for gating; anything less is
     # that silent drop.
     #
-    # This runs BEFORE `prepare` rather than after, because in this binding the
-    # gated fetch happens INSIDE `prepare` and `PreparedModel.run_doc` is the
+    # This runs BEFORE construction rather than after, because in this binding
+    # the gated fetch happens INSIDE it and `EsmProblem.run_doc` is the
     # FLATTENED document, which no longer carries `metadata.x_esd`. So the
-    # record is read from the rewrite itself — the same call `prepare` makes
+    # record is read from the rewrite itself — the same call construction makes
     # internally, on the same document, and idempotent — which also puts the
     # stop before the fetch instead of after it.
     expect_gated = sum(length(v) for v in values(gated); init=0)
@@ -266,12 +266,19 @@ function main()
         "containment ifelse is the FIRST ifelse in every E_* body.")
 
     # ---- PREPARE (extent → rewrite → coords → VI → gated fetch → graph) ------
-    println("prepare(pushdown_rewrite=true) — N_REC discovered by the loader ...")
+    println("esm_problem(pushdown_rewrite=true) — N_REC discovered by the loader ...")
     flush(stdout)
     insp = EA.BuildInspection()
-    t_prep = @elapsed prep = EA.prepare(doc_raw; providers=providers, base_path=ISRM_DIR,
-                                        inspect=insp, pushdown_rewrite=true)
-    N_REC = length(EA.observed_field(prep, insp, String(report["record_field"])))
+    # EarthSciAST phase 4: `prepare` is replaced by problem CONSTRUCTION, which
+    # absorbs the same pipeline. The only new argument is `tspan`, which
+    # `prepare` did not take; this driver never integrates, so the interval is
+    # nominal. `observed_field` is now TWO arguments — the problem owns its own
+    # BuildInspection, so the caller no longer threads the same one through both
+    # calls and hopes they match.
+    t_prep = @elapsed prep = EA.esm_problem(doc_raw, (0.0, 1.0);
+                                            providers=providers, base_path=ISRM_DIR,
+                                            inspect=insp, pushdown_rewrite=true)
+    N_REC = length(EA.observed_field(prep, String(report["record_field"])))
     println("PREPARE done in $(round(t_prep, digits=1)) s  (peak RSS so far: ",
             round(peak_rss_bytes() / 2^30, digits=2), " GiB)"); flush(stdout)
 
@@ -290,7 +297,7 @@ function main()
     function rt(v)
         print("  evaluating observed $v ... "); flush(stdout)
         local fld
-        t = @elapsed fld = EA.observed_field(prep, insp, v)
+        t = @elapsed fld = EA.observed_field(prep, v)
         println(round(t, digits=1), " s"); flush(stdout)
         return fld
     end
