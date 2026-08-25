@@ -29,7 +29,7 @@ The document is fully automatic — nothing model-shaped lives in the runners:
   record's mass is split across the SR emission layers its plume falls
   between. No runner computes a plume height; the shims do not contain the
   word ASME.
-* **Engine-derived pushdown.** `prepare(…, pushdown_rewrite=true)` runs the
+* **Engine-derived pushdown.** `esm_problem(…, pushdown_rewrite=True)` runs the
   projection-pushdown rewrite inside the engine: it derives the
   emission-bearing support set (`pd_support__src_cells`) from the model's own
   spatial `join.overlap`, and records the SR gate in its own rewrite record
