@@ -434,7 +434,7 @@ dependencies = [
 
 [[package]]
 name = "earthsci-ast"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "earthsciio",
  "getrandom 0.3.4",

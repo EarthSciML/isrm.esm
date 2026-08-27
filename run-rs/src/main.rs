@@ -40,8 +40,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::time::Instant;
 
 use earthsci_ast::esio_provider::providers_from_document;
-use earthsci_ast::prepare::PrepareProvider;
-use earthsci_ast::problem::{esm_problem, observed_field, ProblemOptions};
+use earthsci_ast::{esm_problem, observed_field, PrepareProvider, ProblemOptions};
 use serde_json::{Value, json};
 
 /// One reported pathway, as the DOCUMENT names it.
