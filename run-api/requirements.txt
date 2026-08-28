@@ -1,0 +1,23 @@
+# run-api only draws; everything else it does is standard library on purpose,
+# so `--quote-only` and a sign-in work from a bare interpreter.
+#
+#   python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+#   .venv/bin/python run_isrm_demo.py
+#
+# NOTE this is not run-py/requirements.txt. That one builds the engine locally
+# (EarthSciAST + EarthSciIO, editable, plus a multi-GB chunk cache); this one
+# talks to a server that already has it.
+matplotlib
+
+# --- the notebook -----------------------------------------------------------
+# `ipykernel` is what makes this venv runnable as a notebook kernel, in VS Code
+# and in anything else that speaks the Jupyter protocol. VS Code needs no more
+# than this — it brings its own front end.
+ipykernel
+
+# Section 3 builds its example county layer with data/make_polygon_layer.py,
+# which reads a Census shapefile through pyshp. Nothing else needs it.
+pyshp
+
+# Only if you want the standalone Jupyter Lab UI instead of VS Code's.
+# jupyterlab
