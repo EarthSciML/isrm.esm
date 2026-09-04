@@ -15,9 +15,17 @@ matplotlib
 # than this — it brings its own front end.
 ipykernel
 
-# Section 3 builds its example county layer with data/make_polygon_layer.py,
-# which reads a Census shapefile through pyshp. Nothing else needs it.
-pyshp
+# The .esm documents are built, analysed and validated with the format library
+# itself rather than by hand. Base install is jsonschema + sympy + pint + numpy;
+# nothing here pulls the netCDF/zarr/solver stack, which is the point -- this
+# talks to a server that already has the engine.
+earthsci-ast
+
+# `run_isrm` takes a GeoDataFrame, so geopandas is what the notebook is about --
+# it also brings numpy, pandas, shapely and pyproj, and writes the shapefile that
+# gets uploaded. The demos read the Census boundary and TIGER road files straight
+# out of a BytesIO with it.
+geopandas
 
 # Only if you want the standalone Jupyter Lab UI instead of VS Code's.
 # jupyterlab

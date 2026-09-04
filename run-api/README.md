@@ -26,20 +26,63 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 ## The notebook
 
-[`isrm_esm.ipynb`](isrm_esm.ipynb) is the same API client in notebook form, and
-it goes further than the script in two ways:
+[`isrm_esm.ipynb`](isrm_esm.ipynb) is not this script in notebook form. It is one
+function:
 
-- **It runs both geometries** — `isrm_point.esm` (the EGU point inventory, with
-  plume rise) and `isrm_polygon.esm` (county polygons allocated by area overlap).
-- **It draws real maps** rather than the scatter the documents declare. Both
-  compute `rcv_W/S/E/N` — every receptor cell's own rectangle in
-  Lambert-conformal metres — so the notebook asks for those alongside the
-  concentration and fills the actual variable-resolution mesh. The `.esm` plot
-  vocabulary cannot express that (gap G5, which is why the declared plot is a
-  scatter); a notebook is not bound by it.
+```python
+receptors = run_isrm(gdf)
+```
 
-Section 3 needs `pyshp` to build its example layer, and has one wrinkle the point
-document does not: see **A local file cannot be dispatched** below.
+`gdf` is a GeoDataFrame of emissions — points, polygons or lines, in any CRS,
+with a column per pollutant in kg/yr (`PM25`/`NOx`/`NH3`/`SOx`/`VOC`) and, for
+points, optional `STKHGT`/`STKDIAM`/`STKTEMP`/`STKVEL` in m/m/K/(m/s). Back comes
+a GeoDataFrame of the 52,411 receptor cells with `TotalPM25`, `deathsK` and
+`deathsL`, its geometry the cells' own rectangles in the grid's Lambert conformal
+— so the variable-resolution mesh is drawn as it is, with `receptors.plot()`.
+Sections 3, 4 and 5 run it on the EGU point inventory, on Illinois counties and
+on Illinois interstates.
+
+**It does not read these documents.** `isrm_point.esm` and its siblings expect an
+inventory in the inventory's own units — FF10's long format, column indices and
+77-entry pollutant-code map for the point document; a single `EMIS` column for
+the other two. The notebook reads a generated sibling set instead —
+`isrm_gdf_point.esm`, `isrm_gdf_point_flat.esm`, `isrm_gdf_polygon.esm`,
+`isrm_gdf_line.esm` — written by
+[`data/make_gdf_documents.py`](../data/make_gdf_documents.py) from the published
+four: same physics, one uploaded shapefile with one column per pollutant in SI,
+and all five pathways wired for every geometry rather than PM2.5 alone for the
+area and line ones. Regenerate them with
+
+```
+python data/make_gdf_documents.py           # write
+python data/make_gdf_documents.py --check   # fail if out of date
+```
+
+and note that the notebook fetches them from `raw.githubusercontent.com`, so a
+regenerated document has to be **pushed** before a run sees it.
+
+Three things `run_isrm` does that a document cannot do for itself, each because
+the reader or the engine requires it:
+
+- **One row per shapefile PART, emissions split between the parts.** The reader
+  replicates a record's attributes onto each of its parts, so a county of
+  mainland-plus-islands would otherwise carry its whole emission two or three
+  times. `isrm_polygon.esm` says whose job that is: "the layer builder's job and
+  not this document's."
+- **Interior rings dropped.** A hole is written as another part and read as its
+  own record, so it would add its emission share rather than subtract its area.
+- **Polylines cut into two-vertex segments**, each road's emission apportioned by
+  length — because the projection-pushdown rewrite needs the binning aggregate to
+  declare exactly two ranges, so the segment has to be the record.
+
+It also prunes the pathways your frame has no column for. The gated fetch is most
+of what a run costs and it is per pathway, so a PM2.5-only frame fetches one
+source-receptor slab instead of five.
+
+Section 3 downloads the 72 MB FF10 zip to build its point frame; sections 4 and 5
+fetch a Census boundary file and a TIGER road file. Nothing is written to disk
+except one temporary directory, because GDAL writes a shapefile as four files
+with a shared stem.
 
 ## A local file cannot be dispatched
 

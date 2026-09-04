@@ -1,0 +1,2322 @@
+{
+ "esm": "1.0.0",
+ "metadata": {
+  "name": "ISRM_gdf_line",
+  "description": "The InMAP ISRM over a caller-supplied LINE emission layer, read from an uploaded shapefile with one column per pollutant in SI units and allocated to the ISRM source cells by the fraction of each segment's length that lies in the cell. All five pathways, lifted off isrm_point.esm. Generated from isrm_line.esm by data/make_gdf_documents.py.",
+  "authors": [
+   "EarthSciML"
+  ],
+  "license": "MIT",
+  "created": "2026-08-21T00:00:00Z",
+  "tags": [
+   "isrm",
+   "inmap",
+   "air_quality",
+   "health",
+   "source_receptor",
+   "line",
+   "shapefile",
+   "geodataframe"
+  ],
+  "references": [
+   {
+    "url": "https://inmap.run/blog/2019/04/20/sr/",
+    "notes": "The InMAP source-receptor tutorial isrm_point.esm reproduces. This document reuses its grid, its SR matrix, its unit conversion and its health function over a different emission geometry; it has no published total of its own to match, because the emission layer it reads is an EXAMPLE this repository builds (data/make_line_layer.py), not an inventory anyone has published a result for."
+   },
+   {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2020/PRISECROADS/tl_2020_17_prisecroads.zip",
+    "notes": "US Census TIGER/Line primary and secondary roads for Illinois, 2020 vintage - the road centrelines data/make_line_layer.py filters to the interstates, thins to the grid's resolution, cuts into segments and attaches an emission column to."
+   },
+   {
+    "url": "https://doi.org/10.1145/357332.357333",
+    "notes": "Liang, Y.-D. and Barsky, B. A. (1984), 'A new concept and method for line clipping', ACM TOG 3(1) - the parametric slab clip the `length_share` template states. The document's spelling is the branchless form: the entry and exit parameters are taken with min/max over the slabs rather than by early rejection, because `ifelse` does not guard its arms inside an aggregate in any binding."
+   }
+  ],
+  "x_esd": {
+   "emission_column": "The layer's EMIS column is DECLARED, not measured: data/make_line_layer.py sets it to `rate * LEN_KM` short tons per year - a uniform per-kilometre line source at a rate the script's --rate names (1.0 by default). It is read here as PRIMARY PM2.5, the pathway a per-length surrogate is most defensible for and the only one a single undifferentiated tonnage can honestly feed: splitting one number across five pathways would be inventing a speciation profile. The shipped layer (Illinois interstates, 292 roads cut into 1938 segments, 7386.899902 short tons/yr over 7386.9 km) is an EXAMPLE that exercises the geometry. A real on-road inventory carries one column per pollutant, and extending this document to five pathways is five more parameters and five more contractions, exactly as isrm_point.esm has them. NOTE THE REPLICATION: EMIS is the PARENT ROAD's whole annual emission, repeated on every segment row of that road - it is NOT the segment's share. Summing the column would multiply each road's emission by its segment count. `seg_emis` is where the road's total becomes a segment's, by length, and it is the quantity that sums to the inventory.",
+   "one_row_per_segment": "EVERY RECORD IS A TWO-VERTEX SEGMENT, and that is forced by the engine rather than chosen. The natural document would read the roads as the shapefile stores them - one record per road, a [record, vertex, xy] geometry array - and range the emission-binning aggregate over (cell, road, vertex), contracting the last two away. That is legal ESM: esm-spec 4.3.1 contracts the SET of index symbols that do not appear in output_idx, and two of them is as ordinary as one. But the projection-pushdown rewrite that makes this model runnable does not recognise it: the binning detector requires the aggregate to declare EXACTLY TWO ranges, one being the output cell set (pushdown_rewrite `_pd_detect_binning`). A three-range aggregate falls out of the pattern, no derived support set is built, no gate reaches the loader, and the whole 33 GB PrimaryPM25 slab is fetched instead of the 757 source rows this layer needs. So the segment is the record, and data/make_line_layer.py does the cutting. WHAT THE DOCUMENT STILL OWNS: every length in the model. `seg_len` is each segment's own planar length, `road_len` recovers its parent road's by summing the segments that share its LINEID, and `length_share` clips inside a cell. The layer hands over coordinates and a parent id, not lengths - its LEN_KM column exists for a human reading the file and is deliberately never read here. That matters: a document that took its denominator from the layer would be testing half of the allocation.",
+   "geometry_pipeline": "The shapefile reader delivers `geometry` as [index, vertex, xy] in the file's own CRS - here NAD83 geographic (EPSG:4269), the same lon/lat datum the FF10 point inventory and the county layer use - padded to N_LVERT vertex slots. Every record of this layer is exactly two vertices, so nvert_max = 2 is a width the reader fills exactly and no padding occurs; a layer whose rows were longer would be an error from the reader rather than a silent truncation. Reprojection is the DOCUMENT's job and never the reader's, so line_x / line_y apply the same lcc_forward_x / lcc_forward_y templates isrm_point.esm projects its stack coordinates with. seg_xmin/ymin/xmax/ymax are the extremes of the two PROJECTED endpoints, taken after projection because the Lambert image of a lon/lat box is not a box; for a segment the extremes are exactly the two endpoints, so unlike the polygon document's ring extremes this needs no reduction. There is no ring array on either side of this model: a segment is two points and a cell is four numbers, and the clip reads both directly.",
+   "planar_versus_geodesic": "Every length in this model is PLANAR, measured in the Lambert conformal projection the ISRM grid is defined in. The layer's LEN_KM column is GEODESIC, measured on the sphere before projection, and over Illinois the two differ by about half a percent (7350.3 km planar against 7386.9 km geodesic for the shipped layer, the projection's scale factor away from its standard parallels). The document uses the planar one throughout and deliberately does not mix them: the numerator (how much of a segment is inside a cell) and the denominator (how long its road is) have to be in the same metric or the shares do not sum to 1. Mass is conserved because the shares are a ratio of two planar lengths - the metric cancels - not because the planar length happens to be right. Which metric should set the EMISSIONS is a different question and belongs to the inventory, not to this document: the layer answers it with the geodesic length, and the document takes EMIS as given.",
+   "report": {
+    "description": "What a run reports, in the document's own vocabulary, so a caller drives any of these documents without a table of any of them. `pathways` lists one entry per SR array this document contracts with; `total_pm25` and `deaths` name the summed observeds; `record_field` names an observed over the record axis, whose length IS the number of emission records the loader discovered.",
+    "pathways": [
+     {
+      "sr_array": "PrimaryPM25",
+      "emissions": [
+       "E_PM25"
+      ],
+      "concentration": "conc_PrimaryPM25"
+     },
+     {
+      "sr_array": "SOA",
+      "emissions": [
+       "E_VOC"
+      ],
+      "concentration": "conc_SOA"
+     },
+     {
+      "sr_array": "pNO3",
+      "emissions": [
+       "E_NOx"
+      ],
+      "concentration": "conc_pNO3"
+     },
+     {
+      "sr_array": "pNH4",
+      "emissions": [
+       "E_NH3"
+      ],
+      "concentration": "conc_pNH4"
+     },
+     {
+      "sr_array": "pSO4",
+      "emissions": [
+       "E_SOx"
+      ],
+      "concentration": "conc_pSO4"
+     }
+    ],
+    "total_pm25": "TotalPM25",
+    "deaths": {
+     "krewski": "deathsK",
+     "lepeule": "deathsL"
+    },
+    "record_field": "seg_len",
+    "record_field_description": "An observed over the RECORD axis, whose length IS the number of emission records the loader discovered. `extent` binds that count to N_REC inside the engine, but no binding exposes the resolved metaparameter on a prepared model, so a caller that must report it reads the length of this field."
+   },
+   "generated_by": "data/make_gdf_documents.py — DO NOT EDIT BY HAND. Regenerate after changing isrm_point.esm, isrm_polygon.esm or isrm_line.esm.",
+   "column_convention": {
+    "emissions": {
+     "PM25": "kg/yr",
+     "VOC": "kg/yr",
+     "NOx": "kg/yr",
+     "NH3": "kg/yr",
+     "SOx": "kg/yr"
+    },
+    "stack": {
+     "STKHGT": "m",
+     "STKDIAM": "m",
+     "STKTEMP": "K",
+     "STKVEL": "m/s"
+    },
+    "note": "SI throughout, because the caller hands over a GeoDataFrame rather than a published inventory in the inventory's own units. An emission column the frame omits is pruned from the document together with its pathway."
+   }
+  }
+ },
+ "metaparameters": {
+  "N_SRC": {
+   "type": "integer",
+   "default": 52411,
+   "description": "ISRM source cells - the same grid isrm_point.esm and isrm_polygon.esm emit into."
+  },
+  "N_RCV": {
+   "type": "integer",
+   "default": 52411,
+   "description": "ISRM receptor cells (== the source grid, same ordered cell set)."
+  },
+  "N_ALL": {
+   "type": "integer",
+   "default": 596444,
+   "description": "Every cell of the full InMAP grid: 8 ground layers of N_SRC cells plus 19 coarse layers of 9324, laid out layer-major. The length of W/S/E/N/TotalPop/MortalityRate as the zarr stores them. This document reads only the layer-0 prefix, but it reads the arrays at their real length and slices with a declared `select`, the way the other two do."
+  },
+  "N_LVERT": {
+   "type": "integer",
+   "default": 2,
+   "description": "Vertices per emission record, and the reader's `nvert_max`. It is 2 because a record IS a segment (metadata.x_esd.one_row_per_segment): position 1 is the segment's first endpoint and position 2 its second. Unlike the polygon document's N_PVERT this is not the width of a padded ragged array - every row of the layer has exactly two vertices, so the declared width is filled exactly and the reader raises rather than padding or truncating if a rebuilt layer ever disagrees."
+  },
+  "N_XY": {
+   "type": "integer",
+   "default": 2,
+   "description": "Components of a planar coordinate: easting at position 1, northing at position 2. The xy axis of the reader's `geometry`, where the two are lon and lat before projection."
+  },
+  "N_REC": {
+   "type": "integer",
+   "default": 0,
+   "description": "Emission records - SEGMENTS, not roads. DISCOVERED, not declared: Line_Emis.extent binds it to the number of rows the reader delivers, so a reduced run's `select` truncation re-discovers a smaller value by itself. The default 0 is never used - the loader always supplies it. Truncation is safe here in a way it would not be if the road totals came from the layer: `road_len` is a group total over whatever records survive, so a truncated run allocates the surviving segments' shares of a shorter road and still conserves mass."
+  }
+ },
+ "index_sets": {
+  "src_cells": {
+   "kind": "interval",
+   "size": "N_SRC"
+  },
+  "rcv_cells": {
+   "kind": "interval",
+   "size": "N_RCV"
+  },
+  "all_cells": {
+   "kind": "interval",
+   "size": "N_ALL"
+  },
+  "emis_records": {
+   "kind": "interval",
+   "size": "N_REC"
+  },
+  "line_vertex": {
+   "kind": "interval",
+   "size": "N_LVERT"
+  },
+  "xy": {
+   "kind": "interval",
+   "size": "N_XY"
+  }
+ },
+ "data_sources": {
+  "ISRM_Grid": {
+   "kind": "static",
+   "source": {
+    "url_template": "s3://inmap-model/isrm_v1.2.2.zarr/"
+   },
+   "reference": {
+    "url": "https://inmap.run/blog/2022/12/15/tutorial/",
+    "notes": "InMAP ISRM v1.2.1 zarr store on the inmap-model S3 bucket - the 1-D per-cell arrays: the grid rectangles, population and mortality. A ground-level line source needs no meteorology, so like isrm_polygon.esm and unlike isrm_point.esm this document does not read the eight plume-rise fields."
+   },
+   "metadata": {
+    "esio_format": "zarr",
+    "tags": [
+     "isrm",
+     "inmap",
+     "grid",
+     "zarr",
+     "health"
+    ],
+    "x_esd": {
+     "format": "zarr",
+     "zarr_format": 2,
+     "consolidated": false,
+     "arrays": {
+      "TotalPop": {
+       "shape": [
+        596444
+       ],
+       "chunks": [
+        596444
+       ],
+       "dtype": "<f8"
+      },
+      "MortalityRate": {
+       "shape": [
+        596444
+       ],
+       "chunks": [
+        596444
+       ],
+       "dtype": "<f8"
+      },
+      "W": {
+       "shape": [
+        596444
+       ],
+       "chunks": [
+        596444
+       ],
+       "dtype": "<f8"
+      },
+      "S": {
+       "shape": [
+        596444
+       ],
+       "chunks": [
+        596444
+       ],
+       "dtype": "<f8"
+      },
+      "E": {
+       "shape": [
+        596444
+       ],
+       "chunks": [
+        596444
+       ],
+       "dtype": "<f8"
+      },
+      "N": {
+       "shape": [
+        596444
+       ],
+       "chunks": [
+        596444
+       ],
+       "dtype": "<f8"
+      }
+     },
+     "cell_layout": "One value per cell of the FULL InMAP grid, laid out LAYER-MAJOR over the model's 27 layers: 8 ground-grid layers of 52411 cells each, then 19 coarse layers of 9324, and 8*52411 + 19*9324 = 596444 = N_ALL. The source and receptor sets are the leading N_SRC / N_RCV cells - model layer 0 - which is what the `select` ranges below take.",
+     "note": "`format` and the pinned .zarray params are not expressible in the 0.8.0 source schema; the runner sets format at provider creation. Everything here is a single-chunk 1-D array read in full."
+    }
+   }
+  },
+  "ISRM_SR_L0": {
+   "kind": "static",
+   "source": {
+    "url_template": "s3://inmap-model/isrm_v1.2.2.zarr/"
+   },
+   "reference": {
+    "url": "https://inmap.run/blog/2022/12/15/tutorial/",
+    "notes": "InMAP ISRM v1.2.1 zarr store, emission layer 0 - the only emission layer a ground-level line source reaches."
+   },
+   "metadata": {
+    "esio_format": "zarr",
+    "tags": [
+     "isrm",
+     "source_receptor",
+     "air_quality",
+     "zarr",
+     "emis_layer_0"
+    ],
+    "x_esd": {
+     "format": "zarr",
+     "zarr_format": 2,
+     "consolidated": false,
+     "sr_dim_order": [
+      "emisLayer",
+      "source",
+      "receptor"
+     ],
+     "arrays": {
+      "PrimaryPM25": {
+       "shape": [
+        3,
+        52411,
+        52411
+       ],
+       "chunks": [
+        1,
+        5,
+        52411
+       ],
+       "dtype": "<f4",
+       "compressor": "blosc:lz4:clevel5:shuffle1",
+       "fill": 0.0,
+       "order": "C"
+      }
+     },
+     "gated_select": {
+      "axes": [
+       {
+        "fixed": [
+         0
+        ]
+       },
+       {
+        "gated_by": "emis_src_cells"
+       },
+       "all"
+      ],
+      "applies_to": [
+       "PrimaryPM25"
+      ]
+     },
+     "note": "Per-axis selection over the native SR dims [emisLayer, source, receptor] = [3, 52411, 52411]. `{\"fixed\":[0]}` takes emission layer 0 and DROPS the axis; `{\"gated_by\":\"emis_src_cells\"}` takes the DERIVED support set the pushdown rewrite invents from this document's own spatial gate, in its canonical member order; `\"all\"` keeps the receptor axis. The support set here is every cell whose rectangle a road SEGMENT's envelope overlaps, and the rewrite works that out from the gate - the difference between the three documents never leaves the model. Roads are thin, so this is the smallest gate of the three: 757 of 52411 source rows for the shipped Illinois layer, against 2246 for the county layer."
+    }
+   }
+  },
+  "Emis": {
+   "kind": "static",
+   "source": {
+    "url_template": "REPLACED-BY-THE-CALLER"
+   },
+   "reference": {
+    "notes": "The caller's own line emissions, written out of a GeoDataFrame as a zipped shapefile set and uploaded as an EarthSciLab dataset. The url is a placeholder: a dispatched run reads the document's own loaders, so the caller rewrites this with the dataset's store url before it sends the document. There is no upstream copy to point at, because the layer is the caller's."
+   },
+   "metadata": {
+    "esio_format": "shapefile",
+    "tags": [
+     "shapefile",
+     "line",
+     "emissions",
+     "user_supplied"
+    ],
+    "x_esd": {
+     "format": "shapefile",
+     "container": "zip",
+     "crs": "EPSG:4269",
+     "note": "The reader is READER-ONLY: it decodes rings and .dbf columns and declares the file's CRS, and it reprojects nothing. `member` names the .shp inside the zip (the .dbf/.shx/.prj sidecars are the same stem) and never enters the cache key. `nvert_max` is the DECLARED vertex-axis width: every part is right-padded to it by repeating its final vertex, and the reader raises rather than silently widening, so the caller computes it from the frame it is about to write. One row per shapefile PART, with the record's .dbf attributes replicated.",
+     "columns": {
+      "PM25": "kg/yr",
+      "VOC": "kg/yr",
+      "NOx": "kg/yr",
+      "NH3": "kg/yr",
+      "SOx": "kg/yr"
+     }
+    }
+   },
+   "reader_options": {
+    "member": "emis.shp",
+    "nvert_max": 2
+   },
+   "extent": {
+    "metaparameter": "N_REC"
+   }
+  }
+ },
+ "models": {
+  "ISRM": {
+   "system_kind": "nonlinear",
+   "expression_template_imports": [
+    {
+     "ref": "./isrm_base.esm"
+    }
+   ],
+   "reference": {
+    "url": "https://inmap.run/blog/2019/04/20/sr/",
+    "notes": "Same grid, same SR matrix, same unit conversion and same health function as isrm_point.esm and isrm_polygon.esm; a third emission geometry."
+   },
+   "variables": {
+    "W": {
+     "type": "parameter",
+     "units": "m",
+     "default": 0.0,
+     "shape": [
+      "all_cells"
+     ],
+     "description": "Cell west edge (LCC m); from ISRM_Grid.W (full N_ALL, the layer-0 prefix used).",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "W"
+      }
+     }
+    },
+    "S": {
+     "type": "parameter",
+     "units": "m",
+     "default": 0.0,
+     "shape": [
+      "all_cells"
+     ],
+     "description": "Cell south edge (LCC m); from ISRM_Grid.S (full N_ALL, the layer-0 prefix used).",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "S"
+      }
+     }
+    },
+    "E": {
+     "type": "parameter",
+     "units": "m",
+     "default": 0.0,
+     "shape": [
+      "all_cells"
+     ],
+     "description": "Cell east edge (LCC m); from ISRM_Grid.E (full N_ALL, the layer-0 prefix used).",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "E"
+      }
+     }
+    },
+    "N": {
+     "type": "parameter",
+     "units": "m",
+     "default": 0.0,
+     "shape": [
+      "all_cells"
+     ],
+     "description": "Cell north edge (LCC m); from ISRM_Grid.N (full N_ALL, the layer-0 prefix used).",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "N"
+      }
+     }
+    },
+    "TotalPop": {
+     "type": "parameter",
+     "units": "1",
+     "default": 0.0,
+     "shape": [
+      "all_cells"
+     ],
+     "description": "Population per cell; from ISRM_Grid.TotalPop (read on the rcv range = the [0:N_RCV] prefix slice).",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "TotalPop"
+      }
+     }
+    },
+    "MortalityRate": {
+     "type": "parameter",
+     "units": "1",
+     "default": 0.0,
+     "shape": [
+      "all_cells"
+     ],
+     "description": "Baseline mortality per 100k; from ISRM_Grid.MortalityRate (prefix [0:N_RCV]).",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "MortalityRate"
+      }
+     }
+    },
+    "src_W": {
+     "type": "parameter",
+     "units": "m",
+     "default": 0.0,
+     "shape": [
+      "src_cells"
+     ],
+     "description": "Source-cell rectangle W-edge (projected LCC metres), src_cells axis: the declared [0:N_SRC] prefix of the full-grid W. These four are the cell side of the broad-phase gate AND the rectangle `length_share` clips each segment against - there is no cell ring in this document, because a straight segment clips against four numbers and never needs the cell turned into a polygon.",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "W",
+       "select": {
+        "axes": [
+         {
+          "range": {
+           "start": 0,
+           "stop": "N_SRC"
+          }
+         }
+        ]
+       }
+      }
+     }
+    },
+    "src_S": {
+     "type": "parameter",
+     "units": "m",
+     "default": 0.0,
+     "shape": [
+      "src_cells"
+     ],
+     "description": "Source-cell rectangle S-edge (projected LCC metres), src_cells axis: the declared [0:N_SRC] prefix of the full-grid S. These four are the cell side of the broad-phase gate AND the rectangle `length_share` clips each segment against - there is no cell ring in this document, because a straight segment clips against four numbers and never needs the cell turned into a polygon.",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "S",
+       "select": {
+        "axes": [
+         {
+          "range": {
+           "start": 0,
+           "stop": "N_SRC"
+          }
+         }
+        ]
+       }
+      }
+     }
+    },
+    "src_E": {
+     "type": "parameter",
+     "units": "m",
+     "default": 0.0,
+     "shape": [
+      "src_cells"
+     ],
+     "description": "Source-cell rectangle E-edge (projected LCC metres), src_cells axis: the declared [0:N_SRC] prefix of the full-grid E. These four are the cell side of the broad-phase gate AND the rectangle `length_share` clips each segment against - there is no cell ring in this document, because a straight segment clips against four numbers and never needs the cell turned into a polygon.",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "E",
+       "select": {
+        "axes": [
+         {
+          "range": {
+           "start": 0,
+           "stop": "N_SRC"
+          }
+         }
+        ]
+       }
+      }
+     }
+    },
+    "src_N": {
+     "type": "parameter",
+     "units": "m",
+     "default": 0.0,
+     "shape": [
+      "src_cells"
+     ],
+     "description": "Source-cell rectangle N-edge (projected LCC metres), src_cells axis: the declared [0:N_SRC] prefix of the full-grid N. These four are the cell side of the broad-phase gate AND the rectangle `length_share` clips each segment against - there is no cell ring in this document, because a straight segment clips against four numbers and never needs the cell turned into a polygon.",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_Grid",
+      "from": {
+       "file_variable": "N",
+       "select": {
+        "axes": [
+         {
+          "range": {
+           "start": 0,
+           "stop": "N_SRC"
+          }
+         }
+        ]
+       }
+      }
+     }
+    },
+    "line_lonlat": {
+     "type": "parameter",
+     "units": "degree",
+     "default": 0.0,
+     "shape": [
+      "emis_records",
+      "line_vertex",
+      "xy"
+     ],
+     "description": "Every segment's two endpoints, as the shapefile stores them: [record, vertex, component] in the file's own CRS (EPSG:4269 lon/lat). Component 1 is longitude and component 2 is latitude; vertex 1 is where the segment starts and vertex 2 where it ends, and which is which does not matter to anything downstream - every quantity built from them is symmetric in the two. From Line_Emis.geometry, and the only geometry input.",
+     "update": {
+      "kind": "data",
+      "source": "Emis",
+      "from": {
+       "file_variable": "geometry"
+      }
+     }
+    },
+    "fact": {
+     "type": "parameter",
+     "units": "1",
+     "default": 31.709791983764585,
+     "description": "kg/yr -> ug/s: 1e9 ug/kg over 3.1536e7 s/yr. The published documents' 28766.639396245562 is this times 907.18474 kg per short ton, so reading SI changes this constant and nothing else."
+    },
+    "pop_scale": {
+     "type": "parameter",
+     "units": "1",
+     "default": 1.0465819687408728,
+     "description": "Population 2010->2016 rescale."
+    },
+    "mort_scale": {
+     "type": "parameter",
+     "units": "1",
+     "default": 1.025229357798165,
+     "description": "Mortality-rate 2005->2016 rescale."
+    },
+    "rr_K": {
+     "type": "parameter",
+     "units": "1",
+     "default": 1.06,
+     "description": "Krewski relative risk per 10 ug/m3 PM2.5."
+    },
+    "rr_L": {
+     "type": "parameter",
+     "units": "1",
+     "default": 1.14,
+     "description": "Lepeule relative risk per 10 ug/m3 PM2.5."
+    },
+    "lat_1": {
+     "type": "parameter",
+     "units": "degree",
+     "default": 33.0,
+     "description": "LCC standard parallel 1 (NEI2016)."
+    },
+    "lat_2": {
+     "type": "parameter",
+     "units": "degree",
+     "default": 45.0,
+     "description": "LCC standard parallel 2 (NEI2016)."
+    },
+    "lat_0": {
+     "type": "parameter",
+     "units": "degree",
+     "default": 40.0,
+     "description": "LCC origin latitude (NEI2016)."
+    },
+    "lon_0": {
+     "type": "parameter",
+     "units": "degree",
+     "default": -97.0,
+     "description": "LCC central meridian (NEI2016)."
+    },
+    "lcc_R": {
+     "type": "parameter",
+     "units": "m",
+     "default": 6370997.0,
+     "description": "LCC sphere radius (NEI2016). (Named lcc_R, not R, to avoid the reserved physical-constant name R = ideal gas constant.)"
+    },
+    "lcc_d2r": {
+     "type": "parameter",
+     "default": 0.017453292519943295,
+     "description": "degrees->radians (pi/180) for the LCC projection."
+    },
+    "lcc_qp": {
+     "type": "parameter",
+     "default": 0.7853981633974483,
+     "description": "pi/4 quarter-turn offset for the LCC tan half-angle."
+    },
+    "clip_eps": {
+     "type": "parameter",
+     "units": "m",
+     "default": 1e-09,
+     "description": "The floor `length_share` puts under the magnitude of a segment's x- and y-extent before dividing by it, so that a segment exactly parallel to an axis does not divide by zero. One nanometre: far below any distance this grid or this inventory can resolve, and far enough below a cell edge (1 km at the finest) that the two slab parameters it produces are of order 1e12 and the min/max reduce them to 'no constraint' or 'empty' with no rounding in between. It is a numerical guard, not a tolerance - it never merges two distinct points and never changes an answer that was already defined."
+    },
+    "line_x": {
+     "type": "unknown",
+     "units": "m",
+     "shape": [
+      "emis_records",
+      "line_vertex"
+     ],
+     "description": "Lambert-conformal-conic forward-x of every segment endpoint, in the InMAP grid's own projected metres - the same lcc_forward_x template isrm_point.esm projects its emission points and isrm_polygon.esm its ring vertices with. A pure MAP over (record, vertex)."
+    },
+    "line_y": {
+     "type": "unknown",
+     "units": "m",
+     "shape": [
+      "emis_records",
+      "line_vertex"
+     ],
+     "description": "Lambert-conformal-conic forward-y of every segment endpoint. See line_x."
+    },
+    "seg_xmin": {
+     "type": "unknown",
+     "units": "m",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "The western extreme of the PROJECTED segment - the record side of the broad-phase gate. A segment's extremes are its two endpoints, so this is a min of two numbers rather than a reduction over a vertex axis as the polygon document's ring extremes are. Taken AFTER projection, because the Lambert image of a lon/lat rectangle is not a rectangle and a gate built on the file's stored bounding box would not be conservative - and a gate that is not conservative drops real overlaps silently."
+    },
+    "seg_xmax": {
+     "type": "unknown",
+     "units": "m",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "The eastern extreme of the PROJECTED segment - the record side of the broad-phase gate. A segment's extremes are its two endpoints, so this is a max of two numbers rather than a reduction over a vertex axis as the polygon document's ring extremes are. Taken AFTER projection, because the Lambert image of a lon/lat rectangle is not a rectangle and a gate built on the file's stored bounding box would not be conservative - and a gate that is not conservative drops real overlaps silently."
+    },
+    "seg_ymin": {
+     "type": "unknown",
+     "units": "m",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "The southern extreme of the PROJECTED segment - the record side of the broad-phase gate. A segment's extremes are its two endpoints, so this is a min of two numbers rather than a reduction over a vertex axis as the polygon document's ring extremes are. Taken AFTER projection, because the Lambert image of a lon/lat rectangle is not a rectangle and a gate built on the file's stored bounding box would not be conservative - and a gate that is not conservative drops real overlaps silently."
+    },
+    "seg_ymax": {
+     "type": "unknown",
+     "units": "m",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "The northern extreme of the PROJECTED segment - the record side of the broad-phase gate. A segment's extremes are its two endpoints, so this is a max of two numbers rather than a reduction over a vertex axis as the polygon document's ring extremes are. Taken AFTER projection, because the Lambert image of a lon/lat rectangle is not a rectangle and a gate built on the file's stored bounding box would not be conservative - and a gate that is not conservative drops real overlaps silently."
+    },
+    "seg_len": {
+     "type": "unknown",
+     "units": "m",
+     "shape": [
+      "emis_records"
+     ],
+     "description": "Each segment's own length in projected metres. PLANAR, in the grid's coordinates, and deliberately not the layer's geodesic LEN_KM - see metadata.x_esd.planar_versus_geodesic. It appears twice in the allocation, as the numerator of the segment's share of its road and (through `length_share`, which normalises by it implicitly) as the length the clip is a fraction of; both uses are in the same metric, which is what makes the shares sum to 1. A zero-length segment would make `seg_emis` divide 0 by 0, so the builder drops one before it reaches the layer."
+    },
+    "TotalPM25": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Total PM2.5 concentration at each receptor: fact times the sum of every pathway this document wires (PrimaryPM25, SOA, pNO3, pNH4, pSO4). This is the quantity the health functions consume."
+    },
+    "deathsK": {
+     "type": "unknown",
+     "units": "1",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Attributable deaths at each receptor (Krewski RR 1.06): (exp(log(rr)/10*TotalPM25)-1)*TotalPop*pop_scale*MortalityRate/100000*mort_scale. TotalPop/MortalityRate indexed on the rcv range = the [0:N_RCV] prefix slice."
+    },
+    "deathsL": {
+     "type": "unknown",
+     "units": "1",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Attributable deaths at each receptor (Lepeule RR 1.14): (exp(log(rr)/10*TotalPM25)-1)*TotalPop*pop_scale*MortalityRate/100000*mort_scale. TotalPop/MortalityRate indexed on the rcv range = the [0:N_RCV] prefix slice."
+    },
+    "rcv_W": {
+     "type": "unknown",
+     "units": "m",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Receptor cell rectangle west edge in LCC metres: the [0:N_RCV] prefix of the full-grid W. Written so a run's output store carries the geometry its fields are over."
+    },
+    "rcv_S": {
+     "type": "unknown",
+     "units": "m",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Receptor cell rectangle south edge in LCC metres: the [0:N_RCV] prefix of the full-grid S. Written so a run's output store carries the geometry its fields are over."
+    },
+    "rcv_E": {
+     "type": "unknown",
+     "units": "m",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Receptor cell rectangle east edge in LCC metres: the [0:N_RCV] prefix of the full-grid E. Written so a run's output store carries the geometry its fields are over."
+    },
+    "rcv_N": {
+     "type": "unknown",
+     "units": "m",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Receptor cell rectangle north edge in LCC metres: the [0:N_RCV] prefix of the full-grid N. Written so a run's output store carries the geometry its fields are over."
+    },
+    "rcv_cx": {
+     "type": "unknown",
+     "units": "m",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Receptor cell-centroid easting in LCC metres."
+    },
+    "rcv_cy": {
+     "type": "unknown",
+     "units": "m",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Receptor cell-centroid northing in LCC metres."
+    },
+    "emis_PM25": {
+     "type": "parameter",
+     "units": "kg/yr",
+     "default": 0.0,
+     "shape": [
+      "emis_records"
+     ],
+     "description": "Each line's annual PM25 emission in kilograms per year, from Emis.PM25. It feeds the PrimaryPM25 pathway. Absent from the caller's frame this column is not written and the pathway is pruned from the document, so a variable that survives here always has a column behind it. `fact` is the kg/yr -> ug/s conversion, applied once to the summed concentration.",
+     "update": {
+      "kind": "data",
+      "source": "Emis",
+      "from": {
+       "file_variable": "PM25"
+      }
+     }
+    },
+    "emis_VOC": {
+     "type": "parameter",
+     "units": "kg/yr",
+     "default": 0.0,
+     "shape": [
+      "emis_records"
+     ],
+     "description": "Each line's annual VOC emission in kilograms per year, from Emis.VOC. It feeds the SOA pathway. Absent from the caller's frame this column is not written and the pathway is pruned from the document, so a variable that survives here always has a column behind it. `fact` is the kg/yr -> ug/s conversion, applied once to the summed concentration.",
+     "update": {
+      "kind": "data",
+      "source": "Emis",
+      "from": {
+       "file_variable": "VOC"
+      }
+     }
+    },
+    "emis_NOx": {
+     "type": "parameter",
+     "units": "kg/yr",
+     "default": 0.0,
+     "shape": [
+      "emis_records"
+     ],
+     "description": "Each line's annual NOx emission in kilograms per year, from Emis.NOx. It feeds the pNO3 pathway. Absent from the caller's frame this column is not written and the pathway is pruned from the document, so a variable that survives here always has a column behind it. `fact` is the kg/yr -> ug/s conversion, applied once to the summed concentration.",
+     "update": {
+      "kind": "data",
+      "source": "Emis",
+      "from": {
+       "file_variable": "NOx"
+      }
+     }
+    },
+    "emis_NH3": {
+     "type": "parameter",
+     "units": "kg/yr",
+     "default": 0.0,
+     "shape": [
+      "emis_records"
+     ],
+     "description": "Each line's annual NH3 emission in kilograms per year, from Emis.NH3. It feeds the pNH4 pathway. Absent from the caller's frame this column is not written and the pathway is pruned from the document, so a variable that survives here always has a column behind it. `fact` is the kg/yr -> ug/s conversion, applied once to the summed concentration.",
+     "update": {
+      "kind": "data",
+      "source": "Emis",
+      "from": {
+       "file_variable": "NH3"
+      }
+     }
+    },
+    "emis_SOx": {
+     "type": "parameter",
+     "units": "kg/yr",
+     "default": 0.0,
+     "shape": [
+      "emis_records"
+     ],
+     "description": "Each line's annual SOx emission in kilograms per year, from Emis.SOx. It feeds the pSO4 pathway. Absent from the caller's frame this column is not written and the pathway is pruned from the document, so a variable that survives here always has a column behind it. `fact` is the kg/yr -> ug/s conversion, applied once to the summed concentration.",
+     "update": {
+      "kind": "data",
+      "source": "Emis",
+      "from": {
+       "file_variable": "SOx"
+      }
+     }
+    },
+    "E_PM25": {
+     "type": "unknown",
+     "units": "kg/yr",
+     "shape": [
+      "src_cells"
+     ],
+     "description": "PM25 emissions binned into each source cell: the sum over records of the record's PM25 times the fraction of the record that lies in the cell. The gate ifelse MUST stay the FIRST ifelse in this body — the projection-pushdown rewrite reads it to derive the support set and the SR gate, and a body it cannot recognise does not fail, it silently drops out of `applies_to` and the whole SR slab is fetched ungated."
+    },
+    "E_VOC": {
+     "type": "unknown",
+     "units": "kg/yr",
+     "shape": [
+      "src_cells"
+     ],
+     "description": "VOC emissions binned into each source cell: the sum over records of the record's VOC times the fraction of the record that lies in the cell. The gate ifelse MUST stay the FIRST ifelse in this body — the projection-pushdown rewrite reads it to derive the support set and the SR gate, and a body it cannot recognise does not fail, it silently drops out of `applies_to` and the whole SR slab is fetched ungated."
+    },
+    "E_NOx": {
+     "type": "unknown",
+     "units": "kg/yr",
+     "shape": [
+      "src_cells"
+     ],
+     "description": "NOx emissions binned into each source cell: the sum over records of the record's NOx times the fraction of the record that lies in the cell. The gate ifelse MUST stay the FIRST ifelse in this body — the projection-pushdown rewrite reads it to derive the support set and the SR gate, and a body it cannot recognise does not fail, it silently drops out of `applies_to` and the whole SR slab is fetched ungated."
+    },
+    "E_NH3": {
+     "type": "unknown",
+     "units": "kg/yr",
+     "shape": [
+      "src_cells"
+     ],
+     "description": "NH3 emissions binned into each source cell: the sum over records of the record's NH3 times the fraction of the record that lies in the cell. The gate ifelse MUST stay the FIRST ifelse in this body — the projection-pushdown rewrite reads it to derive the support set and the SR gate, and a body it cannot recognise does not fail, it silently drops out of `applies_to` and the whole SR slab is fetched ungated."
+    },
+    "E_SOx": {
+     "type": "unknown",
+     "units": "kg/yr",
+     "shape": [
+      "src_cells"
+     ],
+     "description": "SOx emissions binned into each source cell: the sum over records of the record's SOx times the fraction of the record that lies in the cell. The gate ifelse MUST stay the FIRST ifelse in this body — the projection-pushdown rewrite reads it to derive the support set and the SR gate, and a body it cannot recognise does not fail, it silently drops out of `applies_to` and the whole SR slab is fetched ungated."
+    },
+    "SR_PrimaryPM25_L0": {
+     "type": "parameter",
+     "units": "ug/m^3/(kg/yr)",
+     "default": 0.0,
+     "shape": [
+      "src_cells",
+      "rcv_cells"
+     ],
+     "description": "Source-receptor matrix for the PrimaryPM25 pathway from emission layer 0. Rows are the emission-bearing source cells the projection-pushdown rewrite derives, columns the N_RCV receptors. Wired from ISRM_SR_L0.PrimaryPM25; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2.",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_SR_L0",
+      "from": {
+       "file_variable": "PrimaryPM25"
+      }
+     }
+    },
+    "conc_PrimaryPM25": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Per-receptor concentration response from the PrimaryPM25 pathway: the layer-0 SR matrix contracted with the per-cell emissions. One contraction rather than the point document's three, because an area or line source reaches only emission layer 0."
+    },
+    "pm_PrimaryPM25": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Reported PrimaryPM25 PM2.5 component at each receptor: fact*conc_PrimaryPM25."
+    },
+    "SR_SOA_L0": {
+     "type": "parameter",
+     "units": "ug/m^3/(kg/yr)",
+     "default": 0.0,
+     "shape": [
+      "src_cells",
+      "rcv_cells"
+     ],
+     "description": "Source-receptor matrix for the SOA pathway from emission layer 0. Rows are the emission-bearing source cells the projection-pushdown rewrite derives, columns the N_RCV receptors. Wired from ISRM_SR_L0.SOA; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2.",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_SR_L0",
+      "from": {
+       "file_variable": "SOA"
+      }
+     }
+    },
+    "conc_SOA": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Per-receptor concentration response from the SOA pathway: the layer-0 SR matrix contracted with the per-cell emissions. One contraction rather than the point document's three, because an area or line source reaches only emission layer 0."
+    },
+    "pm_SOA": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Reported SOA PM2.5 component at each receptor: fact*conc_SOA."
+    },
+    "SR_pNO3_L0": {
+     "type": "parameter",
+     "units": "ug/m^3/(kg/yr)",
+     "default": 0.0,
+     "shape": [
+      "src_cells",
+      "rcv_cells"
+     ],
+     "description": "Source-receptor matrix for the pNO3 pathway from emission layer 0. Rows are the emission-bearing source cells the projection-pushdown rewrite derives, columns the N_RCV receptors. Wired from ISRM_SR_L0.pNO3; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2.",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_SR_L0",
+      "from": {
+       "file_variable": "pNO3"
+      }
+     }
+    },
+    "conc_pNO3": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Per-receptor concentration response from the pNO3 pathway: the layer-0 SR matrix contracted with the per-cell emissions. One contraction rather than the point document's three, because an area or line source reaches only emission layer 0."
+    },
+    "pm_pNO3": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Reported pNO3 PM2.5 component at each receptor: fact*conc_pNO3."
+    },
+    "SR_pNH4_L0": {
+     "type": "parameter",
+     "units": "ug/m^3/(kg/yr)",
+     "default": 0.0,
+     "shape": [
+      "src_cells",
+      "rcv_cells"
+     ],
+     "description": "Source-receptor matrix for the pNH4 pathway from emission layer 0. Rows are the emission-bearing source cells the projection-pushdown rewrite derives, columns the N_RCV receptors. Wired from ISRM_SR_L0.pNH4; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2.",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_SR_L0",
+      "from": {
+       "file_variable": "pNH4"
+      }
+     }
+    },
+    "conc_pNH4": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Per-receptor concentration response from the pNH4 pathway: the layer-0 SR matrix contracted with the per-cell emissions. One contraction rather than the point document's three, because an area or line source reaches only emission layer 0."
+    },
+    "pm_pNH4": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Reported pNH4 PM2.5 component at each receptor: fact*conc_pNH4."
+    },
+    "SR_pSO4_L0": {
+     "type": "parameter",
+     "units": "ug/m^3/(kg/yr)",
+     "default": 0.0,
+     "shape": [
+      "src_cells",
+      "rcv_cells"
+     ],
+     "description": "Source-receptor matrix for the pSO4 pathway from emission layer 0. Rows are the emission-bearing source cells the projection-pushdown rewrite derives, columns the N_RCV receptors. Wired from ISRM_SR_L0.pSO4; the loader's own gated_select fixes the emission-layer axis, so this stays rank-2.",
+     "update": {
+      "kind": "data",
+      "source": "ISRM_SR_L0",
+      "from": {
+       "file_variable": "pSO4"
+      }
+     }
+    },
+    "conc_pSO4": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Per-receptor concentration response from the pSO4 pathway: the layer-0 SR matrix contracted with the per-cell emissions. One contraction rather than the point document's three, because an area or line source reaches only emission layer 0."
+    },
+    "pm_pSO4": {
+     "type": "unknown",
+     "units": "ug/m^3",
+     "shape": [
+      "rcv_cells"
+     ],
+     "description": "Reported pSO4 PM2.5 component at each receptor: fact*conc_pSO4."
+    }
+   },
+   "equations": [
+    {
+     "lhs": "line_x",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "r",
+       "v"
+      ],
+      "ranges": {
+       "r": {
+        "from": "emis_records"
+       },
+       "v": {
+        "from": "line_vertex"
+       }
+      },
+      "args": [
+       "line_lonlat"
+      ],
+      "expr": {
+       "op": "apply_expression_template",
+       "args": [],
+       "name": "lcc_forward_x",
+       "bindings": {
+        "lon": {
+         "op": "index",
+         "args": [
+          "line_lonlat",
+          "r",
+          "v",
+          1
+         ]
+        },
+        "lat": {
+         "op": "index",
+         "args": [
+          "line_lonlat",
+          "r",
+          "v",
+          2
+         ]
+        }
+       }
+      }
+     }
+    },
+    {
+     "lhs": "line_y",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "r",
+       "v"
+      ],
+      "ranges": {
+       "r": {
+        "from": "emis_records"
+       },
+       "v": {
+        "from": "line_vertex"
+       }
+      },
+      "args": [
+       "line_lonlat"
+      ],
+      "expr": {
+       "op": "apply_expression_template",
+       "args": [],
+       "name": "lcc_forward_y",
+       "bindings": {
+        "lon": {
+         "op": "index",
+         "args": [
+          "line_lonlat",
+          "r",
+          "v",
+          1
+         ]
+        },
+        "lat": {
+         "op": "index",
+         "args": [
+          "line_lonlat",
+          "r",
+          "v",
+          2
+         ]
+        }
+       }
+      }
+     }
+    },
+    {
+     "lhs": "seg_xmin",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "r"
+      ],
+      "ranges": {
+       "r": {
+        "from": "emis_records"
+       }
+      },
+      "args": [
+       "line_x"
+      ],
+      "expr": {
+       "op": "min",
+       "args": [
+        {
+         "op": "index",
+         "args": [
+          "line_x",
+          "r",
+          1
+         ]
+        },
+        {
+         "op": "index",
+         "args": [
+          "line_x",
+          "r",
+          2
+         ]
+        }
+       ]
+      }
+     }
+    },
+    {
+     "lhs": "seg_xmax",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "r"
+      ],
+      "ranges": {
+       "r": {
+        "from": "emis_records"
+       }
+      },
+      "args": [
+       "line_x"
+      ],
+      "expr": {
+       "op": "max",
+       "args": [
+        {
+         "op": "index",
+         "args": [
+          "line_x",
+          "r",
+          1
+         ]
+        },
+        {
+         "op": "index",
+         "args": [
+          "line_x",
+          "r",
+          2
+         ]
+        }
+       ]
+      }
+     }
+    },
+    {
+     "lhs": "seg_ymin",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "r"
+      ],
+      "ranges": {
+       "r": {
+        "from": "emis_records"
+       }
+      },
+      "args": [
+       "line_y"
+      ],
+      "expr": {
+       "op": "min",
+       "args": [
+        {
+         "op": "index",
+         "args": [
+          "line_y",
+          "r",
+          1
+         ]
+        },
+        {
+         "op": "index",
+         "args": [
+          "line_y",
+          "r",
+          2
+         ]
+        }
+       ]
+      }
+     }
+    },
+    {
+     "lhs": "seg_ymax",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "r"
+      ],
+      "ranges": {
+       "r": {
+        "from": "emis_records"
+       }
+      },
+      "args": [
+       "line_y"
+      ],
+      "expr": {
+       "op": "max",
+       "args": [
+        {
+         "op": "index",
+         "args": [
+          "line_y",
+          "r",
+          1
+         ]
+        },
+        {
+         "op": "index",
+         "args": [
+          "line_y",
+          "r",
+          2
+         ]
+        }
+       ]
+      }
+     }
+    },
+    {
+     "lhs": "seg_len",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "r"
+      ],
+      "ranges": {
+       "r": {
+        "from": "emis_records"
+       }
+      },
+      "args": [
+       "line_x",
+       "line_y"
+      ],
+      "expr": {
+       "op": "apply_expression_template",
+       "args": [],
+       "name": "seg_length",
+       "bindings": {
+        "lx": "line_x",
+        "ly": "line_y"
+       }
+      }
+     }
+    },
+    {
+     "lhs": "deathsK",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "rcv"
+      ],
+      "ranges": {
+       "rcv": {
+        "from": "rcv_cells"
+       }
+      },
+      "args": [
+       "TotalPM25",
+       "TotalPop",
+       "MortalityRate"
+      ],
+      "expr": {
+       "op": "apply_expression_template",
+       "args": [],
+       "name": "krewski_deaths",
+       "bindings": {
+        "rr": "rr_K",
+        "pm": "TotalPM25"
+       }
+      }
+     }
+    },
+    {
+     "lhs": "deathsL",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "rcv"
+      ],
+      "ranges": {
+       "rcv": {
+        "from": "rcv_cells"
+       }
+      },
+      "args": [
+       "TotalPM25",
+       "TotalPop",
+       "MortalityRate"
+      ],
+      "expr": {
+       "op": "apply_expression_template",
+       "args": [],
+       "name": "krewski_deaths",
+       "bindings": {
+        "rr": "rr_L",
+        "pm": "TotalPM25"
+       }
+      }
+     }
+    },
+    {
+     "lhs": "rcv_W",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "rcv"
+      ],
+      "ranges": {
+       "rcv": {
+        "from": "rcv_cells"
+       }
+      },
+      "args": [
+       "W"
+      ],
+      "expr": {
+       "op": "apply_expression_template",
+       "args": [],
+       "name": "receptor_edge",
+       "bindings": {
+        "edge": "W"
+       }
+      }
+     }
+    },
+    {
+     "lhs": "rcv_S",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "rcv"
+      ],
+      "ranges": {
+       "rcv": {
+        "from": "rcv_cells"
+       }
+      },
+      "args": [
+       "S"
+      ],
+      "expr": {
+       "op": "apply_expression_template",
+       "args": [],
+       "name": "receptor_edge",
+       "bindings": {
+        "edge": "S"
+       }
+      }
+     }
+    },
+    {
+     "lhs": "rcv_E",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "rcv"
+      ],
+      "ranges": {
+       "rcv": {
+        "from": "rcv_cells"
+       }
+      },
+      "args": [
+       "E"
+      ],
+      "expr": {
+       "op": "apply_expression_template",
+       "args": [],
+       "name": "receptor_edge",
+       "bindings": {
+        "edge": "E"
+       }
+      }
+     }
+    },
+    {
+     "lhs": "rcv_N",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "rcv"
+      ],
+      "ranges": {
+       "rcv": {
+        "from": "rcv_cells"
+       }
+      },
+      "args": [
+       "N"
+      ],
+      "expr": {
+       "op": "apply_expression_template",
+       "args": [],
+       "name": "receptor_edge",
+       "bindings": {
+        "edge": "N"
+       }
+      }
+     }
+    },
+    {
+     "lhs": "rcv_cx",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "rcv"
+      ],
+      "ranges": {
+       "rcv": {
+        "from": "rcv_cells"
+       }
+      },
+      "args": [
+       "rcv_W",
+       "rcv_E"
+      ],
+      "expr": {
+       "op": "apply_expression_template",
+       "args": [],
+       "name": "receptor_centre",
+       "bindings": {
+        "lo": "rcv_W",
+        "hi": "rcv_E"
+       }
+      }
+     }
+    },
+    {
+     "lhs": "rcv_cy",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "rcv"
+      ],
+      "ranges": {
+       "rcv": {
+        "from": "rcv_cells"
+       }
+      },
+      "args": [
+       "rcv_S",
+       "rcv_N"
+      ],
+      "expr": {
+       "op": "apply_expression_template",
+       "args": [],
+       "name": "receptor_centre",
+       "bindings": {
+        "lo": "rcv_S",
+        "hi": "rcv_N"
+       }
+      }
+     }
+    },
+    {
+     "lhs": "E_PM25",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "c"
+      ],
+      "reduce": "+",
+      "ranges": {
+       "c": {
+        "from": "src_cells"
+       },
+       "r": {
+        "from": "emis_records"
+       }
+      },
+      "args": [
+       "src_W",
+       "src_S",
+       "src_E",
+       "src_N",
+       "seg_xmin",
+       "seg_ymin",
+       "seg_xmax",
+       "seg_ymax",
+       "line_x",
+       "line_y",
+       "emis_PM25",
+       "clip_eps"
+      ],
+      "expr": {
+       "op": "*",
+       "args": [
+        {
+         "op": "apply_expression_template",
+         "args": [],
+         "name": "cell_overlaps_box",
+         "bindings": {
+          "xmin": "src_W",
+          "ymin": "src_S",
+          "xmax": "src_E",
+          "ymax": "src_N",
+          "bxmin": "seg_xmin",
+          "bymin": "seg_ymin",
+          "bxmax": "seg_xmax",
+          "bymax": "seg_ymax"
+         }
+        },
+        {
+         "op": "*",
+         "args": [
+          {
+           "op": "index",
+           "args": [
+            "emis_PM25",
+            "r"
+           ]
+          },
+          {
+           "op": "apply_expression_template",
+           "args": [],
+           "name": "length_share",
+           "bindings": {
+            "lx": "line_x",
+            "ly": "line_y",
+            "xmin": "src_W",
+            "ymin": "src_S",
+            "xmax": "src_E",
+            "ymax": "src_N",
+            "eps": "clip_eps"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     }
+    },
+    {
+     "lhs": "E_VOC",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "c"
+      ],
+      "reduce": "+",
+      "ranges": {
+       "c": {
+        "from": "src_cells"
+       },
+       "r": {
+        "from": "emis_records"
+       }
+      },
+      "args": [
+       "src_W",
+       "src_S",
+       "src_E",
+       "src_N",
+       "seg_xmin",
+       "seg_ymin",
+       "seg_xmax",
+       "seg_ymax",
+       "line_x",
+       "line_y",
+       "emis_VOC",
+       "clip_eps"
+      ],
+      "expr": {
+       "op": "*",
+       "args": [
+        {
+         "op": "apply_expression_template",
+         "args": [],
+         "name": "cell_overlaps_box",
+         "bindings": {
+          "xmin": "src_W",
+          "ymin": "src_S",
+          "xmax": "src_E",
+          "ymax": "src_N",
+          "bxmin": "seg_xmin",
+          "bymin": "seg_ymin",
+          "bxmax": "seg_xmax",
+          "bymax": "seg_ymax"
+         }
+        },
+        {
+         "op": "*",
+         "args": [
+          {
+           "op": "index",
+           "args": [
+            "emis_VOC",
+            "r"
+           ]
+          },
+          {
+           "op": "apply_expression_template",
+           "args": [],
+           "name": "length_share",
+           "bindings": {
+            "lx": "line_x",
+            "ly": "line_y",
+            "xmin": "src_W",
+            "ymin": "src_S",
+            "xmax": "src_E",
+            "ymax": "src_N",
+            "eps": "clip_eps"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     }
+    },
+    {
+     "lhs": "E_NOx",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "c"
+      ],
+      "reduce": "+",
+      "ranges": {
+       "c": {
+        "from": "src_cells"
+       },
+       "r": {
+        "from": "emis_records"
+       }
+      },
+      "args": [
+       "src_W",
+       "src_S",
+       "src_E",
+       "src_N",
+       "seg_xmin",
+       "seg_ymin",
+       "seg_xmax",
+       "seg_ymax",
+       "line_x",
+       "line_y",
+       "emis_NOx",
+       "clip_eps"
+      ],
+      "expr": {
+       "op": "*",
+       "args": [
+        {
+         "op": "apply_expression_template",
+         "args": [],
+         "name": "cell_overlaps_box",
+         "bindings": {
+          "xmin": "src_W",
+          "ymin": "src_S",
+          "xmax": "src_E",
+          "ymax": "src_N",
+          "bxmin": "seg_xmin",
+          "bymin": "seg_ymin",
+          "bxmax": "seg_xmax",
+          "bymax": "seg_ymax"
+         }
+        },
+        {
+         "op": "*",
+         "args": [
+          {
+           "op": "index",
+           "args": [
+            "emis_NOx",
+            "r"
+           ]
+          },
+          {
+           "op": "apply_expression_template",
+           "args": [],
+           "name": "length_share",
+           "bindings": {
+            "lx": "line_x",
+            "ly": "line_y",
+            "xmin": "src_W",
+            "ymin": "src_S",
+            "xmax": "src_E",
+            "ymax": "src_N",
+            "eps": "clip_eps"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     }
+    },
+    {
+     "lhs": "E_NH3",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "c"
+      ],
+      "reduce": "+",
+      "ranges": {
+       "c": {
+        "from": "src_cells"
+       },
+       "r": {
+        "from": "emis_records"
+       }
+      },
+      "args": [
+       "src_W",
+       "src_S",
+       "src_E",
+       "src_N",
+       "seg_xmin",
+       "seg_ymin",
+       "seg_xmax",
+       "seg_ymax",
+       "line_x",
+       "line_y",
+       "emis_NH3",
+       "clip_eps"
+      ],
+      "expr": {
+       "op": "*",
+       "args": [
+        {
+         "op": "apply_expression_template",
+         "args": [],
+         "name": "cell_overlaps_box",
+         "bindings": {
+          "xmin": "src_W",
+          "ymin": "src_S",
+          "xmax": "src_E",
+          "ymax": "src_N",
+          "bxmin": "seg_xmin",
+          "bymin": "seg_ymin",
+          "bxmax": "seg_xmax",
+          "bymax": "seg_ymax"
+         }
+        },
+        {
+         "op": "*",
+         "args": [
+          {
+           "op": "index",
+           "args": [
+            "emis_NH3",
+            "r"
+           ]
+          },
+          {
+           "op": "apply_expression_template",
+           "args": [],
+           "name": "length_share",
+           "bindings": {
+            "lx": "line_x",
+            "ly": "line_y",
+            "xmin": "src_W",
+            "ymin": "src_S",
+            "xmax": "src_E",
+            "ymax": "src_N",
+            "eps": "clip_eps"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     }
+    },
+    {
+     "lhs": "E_SOx",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "c"
+      ],
+      "reduce": "+",
+      "ranges": {
+       "c": {
+        "from": "src_cells"
+       },
+       "r": {
+        "from": "emis_records"
+       }
+      },
+      "args": [
+       "src_W",
+       "src_S",
+       "src_E",
+       "src_N",
+       "seg_xmin",
+       "seg_ymin",
+       "seg_xmax",
+       "seg_ymax",
+       "line_x",
+       "line_y",
+       "emis_SOx",
+       "clip_eps"
+      ],
+      "expr": {
+       "op": "*",
+       "args": [
+        {
+         "op": "apply_expression_template",
+         "args": [],
+         "name": "cell_overlaps_box",
+         "bindings": {
+          "xmin": "src_W",
+          "ymin": "src_S",
+          "xmax": "src_E",
+          "ymax": "src_N",
+          "bxmin": "seg_xmin",
+          "bymin": "seg_ymin",
+          "bxmax": "seg_xmax",
+          "bymax": "seg_ymax"
+         }
+        },
+        {
+         "op": "*",
+         "args": [
+          {
+           "op": "index",
+           "args": [
+            "emis_SOx",
+            "r"
+           ]
+          },
+          {
+           "op": "apply_expression_template",
+           "args": [],
+           "name": "length_share",
+           "bindings": {
+            "lx": "line_x",
+            "ly": "line_y",
+            "xmin": "src_W",
+            "ymin": "src_S",
+            "xmax": "src_E",
+            "ymax": "src_N",
+            "eps": "clip_eps"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     }
+    },
+    {
+     "lhs": "conc_PrimaryPM25",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "rcv"
+      ],
+      "reduce": "+",
+      "ranges": {
+       "s": {
+        "from": "src_cells"
+       },
+       "rcv": {
+        "from": "rcv_cells"
+       }
+      },
+      "args": [
+       "SR_PrimaryPM25_L0",
+       "E_PM25"
+      ],
+      "expr": {
+       "op": "apply_expression_template",
+       "args": [],
+       "name": "sr_matvec",
+       "bindings": {
+        "A": "SR_PrimaryPM25_L0",
+        "E": "E_PM25"
+       }
+      }
+     }
+    },
+    {
+     "lhs": "pm_PrimaryPM25",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "rcv"
+      ],
+      "ranges": {
+       "rcv": {
+        "from": "rcv_cells"
+       }
+      },
+      "args": [
+       "conc_PrimaryPM25"
+      ],
+      "expr": {
+       "op": "apply_expression_template",
+       "args": [],
+       "name": "to_ug_m3",
+       "bindings": {
+        "x": "conc_PrimaryPM25"
+       }
+      }
+     }
+    },
+    {
+     "lhs": "conc_SOA",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "rcv"
+      ],
+      "reduce": "+",
+      "ranges": {
+       "s": {
+        "from": "src_cells"
+       },
+       "rcv": {
+        "from": "rcv_cells"
+       }
+      },
+      "args": [
+       "SR_SOA_L0",
+       "E_VOC"
+      ],
+      "expr": {
+       "op": "apply_expression_template",
+       "args": [],
+       "name": "sr_matvec",
+       "bindings": {
+        "A": "SR_SOA_L0",
+        "E": "E_VOC"
+       }
+      }
+     }
+    },
+    {
+     "lhs": "pm_SOA",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "rcv"
+      ],
+      "ranges": {
+       "rcv": {
+        "from": "rcv_cells"
+       }
+      },
+      "args": [
+       "conc_SOA"
+      ],
+      "expr": {
+       "op": "apply_expression_template",
+       "args": [],
+       "name": "to_ug_m3",
+       "bindings": {
+        "x": "conc_SOA"
+       }
+      }
+     }
+    },
+    {
+     "lhs": "conc_pNO3",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "rcv"
+      ],
+      "reduce": "+",
+      "ranges": {
+       "s": {
+        "from": "src_cells"
+       },
+       "rcv": {
+        "from": "rcv_cells"
+       }
+      },
+      "args": [
+       "SR_pNO3_L0",
+       "E_NOx"
+      ],
+      "expr": {
+       "op": "apply_expression_template",
+       "args": [],
+       "name": "sr_matvec",
+       "bindings": {
+        "A": "SR_pNO3_L0",
+        "E": "E_NOx"
+       }
+      }
+     }
+    },
+    {
+     "lhs": "pm_pNO3",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "rcv"
+      ],
+      "ranges": {
+       "rcv": {
+        "from": "rcv_cells"
+       }
+      },
+      "args": [
+       "conc_pNO3"
+      ],
+      "expr": {
+       "op": "apply_expression_template",
+       "args": [],
+       "name": "to_ug_m3",
+       "bindings": {
+        "x": "conc_pNO3"
+       }
+      }
+     }
+    },
+    {
+     "lhs": "conc_pNH4",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "rcv"
+      ],
+      "reduce": "+",
+      "ranges": {
+       "s": {
+        "from": "src_cells"
+       },
+       "rcv": {
+        "from": "rcv_cells"
+       }
+      },
+      "args": [
+       "SR_pNH4_L0",
+       "E_NH3"
+      ],
+      "expr": {
+       "op": "apply_expression_template",
+       "args": [],
+       "name": "sr_matvec",
+       "bindings": {
+        "A": "SR_pNH4_L0",
+        "E": "E_NH3"
+       }
+      }
+     }
+    },
+    {
+     "lhs": "pm_pNH4",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "rcv"
+      ],
+      "ranges": {
+       "rcv": {
+        "from": "rcv_cells"
+       }
+      },
+      "args": [
+       "conc_pNH4"
+      ],
+      "expr": {
+       "op": "apply_expression_template",
+       "args": [],
+       "name": "to_ug_m3",
+       "bindings": {
+        "x": "conc_pNH4"
+       }
+      }
+     }
+    },
+    {
+     "lhs": "conc_pSO4",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "rcv"
+      ],
+      "reduce": "+",
+      "ranges": {
+       "s": {
+        "from": "src_cells"
+       },
+       "rcv": {
+        "from": "rcv_cells"
+       }
+      },
+      "args": [
+       "SR_pSO4_L0",
+       "E_SOx"
+      ],
+      "expr": {
+       "op": "apply_expression_template",
+       "args": [],
+       "name": "sr_matvec",
+       "bindings": {
+        "A": "SR_pSO4_L0",
+        "E": "E_SOx"
+       }
+      }
+     }
+    },
+    {
+     "lhs": "pm_pSO4",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "rcv"
+      ],
+      "ranges": {
+       "rcv": {
+        "from": "rcv_cells"
+       }
+      },
+      "args": [
+       "conc_pSO4"
+      ],
+      "expr": {
+       "op": "apply_expression_template",
+       "args": [],
+       "name": "to_ug_m3",
+       "bindings": {
+        "x": "conc_pSO4"
+       }
+      }
+     }
+    },
+    {
+     "lhs": "TotalPM25",
+     "rhs": {
+      "op": "aggregate",
+      "output_idx": [
+       "rcv"
+      ],
+      "ranges": {
+       "rcv": {
+        "from": "rcv_cells"
+       }
+      },
+      "args": [
+       "conc_PrimaryPM25",
+       "conc_SOA",
+       "conc_pNO3",
+       "conc_pNH4",
+       "conc_pSO4"
+      ],
+      "expr": {
+       "op": "*",
+       "args": [
+        "fact",
+        {
+         "op": "+",
+         "args": [
+          {
+           "op": "index",
+           "args": [
+            "conc_PrimaryPM25",
+            "rcv"
+           ]
+          },
+          {
+           "op": "index",
+           "args": [
+            "conc_SOA",
+            "rcv"
+           ]
+          },
+          {
+           "op": "index",
+           "args": [
+            "conc_pNO3",
+            "rcv"
+           ]
+          },
+          {
+           "op": "index",
+           "args": [
+            "conc_pNH4",
+            "rcv"
+           ]
+          },
+          {
+           "op": "index",
+           "args": [
+            "conc_pSO4",
+            "rcv"
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     }
+    }
+   ],
+   "analyses": [
+    {
+     "id": "isrm_line_demo",
+     "description": "Static evaluation of the line-source ISRM: TotalPM25 and attributable deaths at the N_RCV receptor cells, from a road emission layer allocated by segment/cell length overlap. Degenerate time span (no ODE integration).",
+     "time_span": {
+      "start": 0.0,
+      "end": 0.0
+     },
+     "plots": [
+      {
+       "id": "totalpm25_map",
+       "type": "scatter",
+       "description": "TotalPM25 (ug/m3) vs receptor cell-centroid easting. The ISRM grid is an unstructured variable-resolution polygon mesh with a single flat index, so field_snapshot (structured lat-lon) does not apply and a polygon choropleth is out of format scope; scatter has no per-point colour channel, so the value is on the y-axis.",
+       "x": {
+        "variable": "rcv_cx",
+        "label": "receptor centroid x (m, LCC)"
+       },
+       "y": {
+        "variable": "TotalPM25",
+        "label": "PM2.5 (ug/m3)"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

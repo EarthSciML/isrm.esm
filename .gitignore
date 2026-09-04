@@ -6,6 +6,7 @@
 data/*
 !data/make_polygon_layer.py
 !data/make_line_layer.py
+!data/make_gdf_documents.py
 __pycache__/
 *.pyc
 
