@@ -1,5 +1,5 @@
 {
- "esm": "1.0.0",
+ "esm": "1.1.0",
  "metadata": {
   "name": "ISRM_gdf_point_flat",
   "description": "The InMAP ISRM over a caller-supplied POINT emission inventory (at ground level), read from an uploaded shapefile with one column per pollutant in SI units. Generated from isrm_point.esm by data/make_gdf_documents.py.",
@@ -1203,7 +1203,7 @@
     {
      "lhs": "X",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "r"
       ],
@@ -1245,7 +1245,7 @@
     {
      "lhs": "Y",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "r"
       ],
@@ -1287,7 +1287,7 @@
     {
      "lhs": "deathsK",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -1315,7 +1315,7 @@
     {
      "lhs": "deathsL",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -1343,7 +1343,7 @@
     {
      "lhs": "rcv_cx",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -1370,7 +1370,7 @@
     {
      "lhs": "rcv_cy",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -1397,7 +1397,7 @@
     {
      "lhs": "rcv_W",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -1422,7 +1422,7 @@
     {
      "lhs": "rcv_S",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -1447,7 +1447,7 @@
     {
      "lhs": "rcv_E",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -1472,7 +1472,7 @@
     {
      "lhs": "rcv_N",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -1497,7 +1497,7 @@
     {
      "lhs": "E_PM25",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "c"
       ],
@@ -1554,7 +1554,7 @@
     {
      "lhs": "E_VOC",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "c"
       ],
@@ -1611,7 +1611,7 @@
     {
      "lhs": "E_NOx",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "c"
       ],
@@ -1668,7 +1668,7 @@
     {
      "lhs": "E_NH3",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "c"
       ],
@@ -1725,7 +1725,7 @@
     {
      "lhs": "E_SOx",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "c"
       ],
@@ -1782,7 +1782,7 @@
     {
      "lhs": "conc_PrimaryPM25",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -1813,7 +1813,7 @@
     {
      "lhs": "pm_PrimaryPM25",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -1838,7 +1838,7 @@
     {
      "lhs": "conc_SOA",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -1869,7 +1869,7 @@
     {
      "lhs": "pm_SOA",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -1894,7 +1894,7 @@
     {
      "lhs": "conc_pNO3",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -1925,7 +1925,7 @@
     {
      "lhs": "pm_pNO3",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -1950,7 +1950,7 @@
     {
      "lhs": "conc_pNH4",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -1981,7 +1981,7 @@
     {
      "lhs": "pm_pNH4",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -2006,7 +2006,7 @@
     {
      "lhs": "conc_pSO4",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -2037,7 +2037,7 @@
     {
      "lhs": "pm_pSO4",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -2062,7 +2062,7 @@
     {
      "lhs": "TotalPM25",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],

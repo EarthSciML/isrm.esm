@@ -537,7 +537,7 @@ def build_point(plume: bool) -> dict:
     for axis, template in (("X", "lcc_forward_x"), ("Y", "lcc_forward_y")):
         eq = find(equations, axis)
         eq["rhs"] = {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": ["r"],
             "ranges": {"r": {"from": "emis_records"}},
             "args": ["emis_lonlat"],

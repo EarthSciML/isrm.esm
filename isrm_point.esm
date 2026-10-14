@@ -1,5 +1,5 @@
 {
-  "esm": "1.0.0",
+  "esm": "1.1.0",
   "metadata": {
     "name": "ISRM_point",
     "description": "POINT-SOURCE emissions through the InMAP ISRM. The geometry-independent half \u2014 the grid axes, the sizing metaparameters and the shared expression fragments \u2014 is imported from ./isrm_base.esm (esm-spec 9.7); what remains here is everything specific to an inventory of stacks: the FF10 point loader, the projected record coordinates, the pollutant-to-pathway masks, the ASME plume rise over the stack's own meteorology, and the fifteen (pathway, SR layer) binning aggregates that carry a record's mass into its source cell. FULLY-AUTOMATIC clean full-domain InMAP ISRM, over the repaired and rechunked isrm_v1.2.2.zarr. Full-domain SR[src_cells, rcv_cells] per pathway AND per SR emission layer, E as the emission->(cell, layer) binning +-aggregate, X/Y as an in-model Lambert-conformal PROJECTION observed over raw emis_lon/emis_lat (the inline trig IS the lambert_conformal_forward_x/y expansion), projected at BUILD time by the general-eval coordinate path. PLUME RISE IS STATED HERE, NOT IN A RUNNER: fifteen observeds carry ctessum/atmos ASMEPrecomputed plus a CORRECTED sr.Reader.layerFracs over the zarr's own per-cell meteorology, and SPLIT each record's mass across the three SR emission layers before the contraction - w_sr0/w_sr1/w_sr2, summing to 1, interpolated on cell-CENTRE heights between the model layers [0, 3, 6] the SR calculation was performed for. NO hand-authored pushdown constructs (no derived set / producer / member_factor) and NO caller-supplied projected coordinates. Builds with pushdown_rewrite=true: the auto-rewrite generates the support set + distinct producer + member_factor + gated_select, and the three gated SR providers are fetched pre-sliced to the invented source cells.",
@@ -2347,7 +2347,7 @@
         {
           "lhs": "X",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -2386,7 +2386,7 @@
         {
           "lhs": "Y",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -2425,7 +2425,7 @@
         {
           "lhs": "is_VOC",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -2909,7 +2909,7 @@
         {
           "lhs": "is_NOx",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -2990,7 +2990,7 @@
         {
           "lhs": "is_NH3",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -3027,7 +3027,7 @@
         {
           "lhs": "is_SOx",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -3064,7 +3064,7 @@
         {
           "lhs": "is_PM25",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -3327,7 +3327,7 @@
         {
           "lhs": "stk_height",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -3382,7 +3382,7 @@
         {
           "lhs": "stk_diam",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -3437,7 +3437,7 @@
         {
           "lhs": "stk_temp",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -3504,7 +3504,7 @@
         {
           "lhs": "stk_vel",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -3559,7 +3559,7 @@
         {
           "lhs": "stack_layer",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -3722,7 +3722,7 @@
         {
           "lhs": "air_temp",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -3783,7 +3783,7 @@
         {
           "lhs": "wind_speed",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -3844,7 +3844,7 @@
         {
           "lhs": "wind_inv",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -3905,7 +3905,7 @@
         {
           "lhs": "wind_m13",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -3966,7 +3966,7 @@
         {
           "lhs": "wind_m14",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -4027,7 +4027,7 @@
         {
           "lhs": "s_class",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -4088,7 +4088,7 @@
         {
           "lhs": "s_param",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -4149,7 +4149,7 @@
         {
           "lhs": "temp_diff",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -4247,7 +4247,7 @@
         {
           "lhs": "buoy_flux",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -4305,7 +4305,7 @@
         {
           "lhs": "delta_h",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -4650,7 +4650,7 @@
         {
           "lhs": "plume_height",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -4687,7 +4687,7 @@
         {
           "lhs": "plume_model_layer",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -4926,7 +4926,7 @@
         {
           "lhs": "frac_lo",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -5145,7 +5145,7 @@
         {
           "lhs": "frac_hi",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -5376,7 +5376,7 @@
         {
           "lhs": "w_sr0",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -5469,7 +5469,7 @@
         {
           "lhs": "w_sr1",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -5607,7 +5607,7 @@
         {
           "lhs": "w_sr2",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -5694,7 +5694,7 @@
         {
           "lhs": "sr_lower",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -5800,7 +5800,7 @@
         {
           "lhs": "E_VOC_L0",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "c"
             ],
@@ -5873,7 +5873,7 @@
         {
           "lhs": "E_VOC_L1",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "c"
             ],
@@ -5946,7 +5946,7 @@
         {
           "lhs": "E_VOC_L2",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "c"
             ],
@@ -6019,7 +6019,7 @@
         {
           "lhs": "E_NOx_L0",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "c"
             ],
@@ -6092,7 +6092,7 @@
         {
           "lhs": "E_NOx_L1",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "c"
             ],
@@ -6165,7 +6165,7 @@
         {
           "lhs": "E_NOx_L2",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "c"
             ],
@@ -6238,7 +6238,7 @@
         {
           "lhs": "E_NH3_L0",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "c"
             ],
@@ -6311,7 +6311,7 @@
         {
           "lhs": "E_NH3_L1",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "c"
             ],
@@ -6384,7 +6384,7 @@
         {
           "lhs": "E_NH3_L2",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "c"
             ],
@@ -6457,7 +6457,7 @@
         {
           "lhs": "E_SOx_L0",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "c"
             ],
@@ -6530,7 +6530,7 @@
         {
           "lhs": "E_SOx_L1",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "c"
             ],
@@ -6603,7 +6603,7 @@
         {
           "lhs": "E_SOx_L2",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "c"
             ],
@@ -6676,7 +6676,7 @@
         {
           "lhs": "E_PM25_L0",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "c"
             ],
@@ -6749,7 +6749,7 @@
         {
           "lhs": "E_PM25_L1",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "c"
             ],
@@ -6822,7 +6822,7 @@
         {
           "lhs": "E_PM25_L2",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "c"
             ],
@@ -6895,7 +6895,7 @@
         {
           "lhs": "conc_SOA_L0",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -6926,7 +6926,7 @@
         {
           "lhs": "conc_SOA_L1",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -6957,7 +6957,7 @@
         {
           "lhs": "conc_SOA_L2",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -6988,7 +6988,7 @@
         {
           "lhs": "conc_pNO3_L0",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7019,7 +7019,7 @@
         {
           "lhs": "conc_pNO3_L1",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7050,7 +7050,7 @@
         {
           "lhs": "conc_pNO3_L2",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7081,7 +7081,7 @@
         {
           "lhs": "conc_pNH4_L0",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7112,7 +7112,7 @@
         {
           "lhs": "conc_pNH4_L1",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7143,7 +7143,7 @@
         {
           "lhs": "conc_pNH4_L2",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7174,7 +7174,7 @@
         {
           "lhs": "conc_pSO4_L0",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7205,7 +7205,7 @@
         {
           "lhs": "conc_pSO4_L1",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7236,7 +7236,7 @@
         {
           "lhs": "conc_pSO4_L2",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7267,7 +7267,7 @@
         {
           "lhs": "conc_PrimaryPM25_L0",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7298,7 +7298,7 @@
         {
           "lhs": "conc_PrimaryPM25_L1",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7329,7 +7329,7 @@
         {
           "lhs": "conc_PrimaryPM25_L2",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7360,7 +7360,7 @@
         {
           "lhs": "conc_SOA",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7389,7 +7389,7 @@
         {
           "lhs": "conc_pNO3",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7418,7 +7418,7 @@
         {
           "lhs": "conc_pNH4",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7447,7 +7447,7 @@
         {
           "lhs": "conc_pSO4",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7476,7 +7476,7 @@
         {
           "lhs": "conc_PrimaryPM25",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7505,7 +7505,7 @@
         {
           "lhs": "TotalPM25",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7572,7 +7572,7 @@
         {
           "lhs": "pm_SOA",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7597,7 +7597,7 @@
         {
           "lhs": "pm_pNO3",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7622,7 +7622,7 @@
         {
           "lhs": "pm_pNH4",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7647,7 +7647,7 @@
         {
           "lhs": "pm_pSO4",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7672,7 +7672,7 @@
         {
           "lhs": "pm_PrimaryPM25",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7697,7 +7697,7 @@
         {
           "lhs": "deathsK",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7725,7 +7725,7 @@
         {
           "lhs": "deathsL",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7753,7 +7753,7 @@
         {
           "lhs": "rcv_cx",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7780,7 +7780,7 @@
         {
           "lhs": "rcv_cy",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7807,7 +7807,7 @@
         {
           "lhs": "rcv_W",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7832,7 +7832,7 @@
         {
           "lhs": "rcv_S",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7857,7 +7857,7 @@
         {
           "lhs": "rcv_E",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -7882,7 +7882,7 @@
         {
           "lhs": "rcv_N",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],

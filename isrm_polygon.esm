@@ -1,5 +1,5 @@
 {
-  "esm": "1.0.0",
+  "esm": "1.1.0",
   "metadata": {
     "name": "ISRM_polygon",
     "description": "The InMAP ISRM source-receptor model over an AREA (polygon) emission inventory: county boundaries carrying an annual primary-PM2.5 total, allocated to the ISRM source cells by the fraction of each polygon's area that falls in each cell, contracted with the layer-0 source-receptor matrix, and turned into PM2.5-attributable deaths. It is the geometry sibling of isrm_point.esm: the two share isrm_base.esm - the Lambert conformal projection, the source-receptor contraction term, the ug/m3 scaling and the concentration-response function are the same template bodies - and differ ONLY in how emitted mass reaches a grid cell. A point drops all of its mass in the one cell that contains it; a polygon splits its mass across every cell it overlaps, in proportion to the overlapping area. Everything downstream of the per-cell emission vector is identical. WHY THERE IS NO PLUME RISE HERE: an area source has no stack, no exit velocity and no exit temperature, so there is nothing to rise - its mass enters the model at the ground, which is SR emission layer 0, and the document reads only the ISRM_SR_L0 sibling loader. The point document's ASME algorithm is not omitted from this one, it is inapplicable to it.",
@@ -834,7 +834,7 @@
         {
           "lhs": "poly_x",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r",
               "v"
@@ -880,7 +880,7 @@
         {
           "lhs": "poly_y",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r",
               "v"
@@ -926,7 +926,7 @@
         {
           "lhs": "poly_ring",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r",
               "v",
@@ -975,7 +975,7 @@
         {
           "lhs": "poly_xmin",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -1004,7 +1004,7 @@
         {
           "lhs": "poly_xmax",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -1033,7 +1033,7 @@
         {
           "lhs": "poly_ymin",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -1062,7 +1062,7 @@
         {
           "lhs": "poly_ymax",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -1091,7 +1091,7 @@
         {
           "lhs": "poly_cross2",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -1122,7 +1122,7 @@
         {
           "lhs": "poly_area",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "r"
             ],
@@ -1157,7 +1157,7 @@
         {
           "lhs": "cell_ring",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "c",
               "v",
@@ -1196,7 +1196,7 @@
         {
           "lhs": "E_PM25",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "c"
             ],
@@ -1270,7 +1270,7 @@
         {
           "lhs": "conc_PrimaryPM25",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -1301,7 +1301,7 @@
         {
           "lhs": "pm_PrimaryPM25",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -1326,7 +1326,7 @@
         {
           "lhs": "TotalPM25",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -1351,7 +1351,7 @@
         {
           "lhs": "deathsK",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -1379,7 +1379,7 @@
         {
           "lhs": "deathsL",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -1407,7 +1407,7 @@
         {
           "lhs": "rcv_W",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -1432,7 +1432,7 @@
         {
           "lhs": "rcv_S",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -1457,7 +1457,7 @@
         {
           "lhs": "rcv_E",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -1482,7 +1482,7 @@
         {
           "lhs": "rcv_N",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -1507,7 +1507,7 @@
         {
           "lhs": "rcv_cx",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],
@@ -1534,7 +1534,7 @@
         {
           "lhs": "rcv_cy",
           "rhs": {
-            "op": "aggregate",
+            "op": "faq",
             "output_idx": [
               "rcv"
             ],

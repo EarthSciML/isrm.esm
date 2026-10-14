@@ -1,5 +1,5 @@
 {
- "esm": "1.0.0",
+ "esm": "1.1.0",
  "metadata": {
   "name": "ISRM_gdf_point",
   "description": "The InMAP ISRM over a caller-supplied POINT emission inventory (with ASME plume rise), read from an uploaded shapefile with one column per pollutant in SI units. Generated from isrm_point.esm by data/make_gdf_documents.py.",
@@ -2182,7 +2182,7 @@
     {
      "lhs": "X",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "r"
       ],
@@ -2224,7 +2224,7 @@
     {
      "lhs": "Y",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "r"
       ],
@@ -2266,7 +2266,7 @@
     {
      "lhs": "stack_layer",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "r"
       ],
@@ -2429,7 +2429,7 @@
     {
      "lhs": "air_temp",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "r"
       ],
@@ -2490,7 +2490,7 @@
     {
      "lhs": "wind_speed",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "r"
       ],
@@ -2551,7 +2551,7 @@
     {
      "lhs": "wind_inv",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "r"
       ],
@@ -2612,7 +2612,7 @@
     {
      "lhs": "wind_m13",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "r"
       ],
@@ -2673,7 +2673,7 @@
     {
      "lhs": "wind_m14",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "r"
       ],
@@ -2734,7 +2734,7 @@
     {
      "lhs": "s_class",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "r"
       ],
@@ -2795,7 +2795,7 @@
     {
      "lhs": "s_param",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "r"
       ],
@@ -2856,7 +2856,7 @@
     {
      "lhs": "temp_diff",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "r"
       ],
@@ -2954,7 +2954,7 @@
     {
      "lhs": "buoy_flux",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "r"
       ],
@@ -3012,7 +3012,7 @@
     {
      "lhs": "delta_h",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "r"
       ],
@@ -3357,7 +3357,7 @@
     {
      "lhs": "plume_height",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "r"
       ],
@@ -3394,7 +3394,7 @@
     {
      "lhs": "plume_model_layer",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "r"
       ],
@@ -3633,7 +3633,7 @@
     {
      "lhs": "frac_lo",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "r"
       ],
@@ -3852,7 +3852,7 @@
     {
      "lhs": "frac_hi",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "r"
       ],
@@ -4083,7 +4083,7 @@
     {
      "lhs": "w_sr0",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "r"
       ],
@@ -4176,7 +4176,7 @@
     {
      "lhs": "w_sr1",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "r"
       ],
@@ -4314,7 +4314,7 @@
     {
      "lhs": "w_sr2",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "r"
       ],
@@ -4401,7 +4401,7 @@
     {
      "lhs": "deathsK",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -4429,7 +4429,7 @@
     {
      "lhs": "deathsL",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -4457,7 +4457,7 @@
     {
      "lhs": "rcv_cx",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -4484,7 +4484,7 @@
     {
      "lhs": "rcv_cy",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -4511,7 +4511,7 @@
     {
      "lhs": "rcv_W",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -4536,7 +4536,7 @@
     {
      "lhs": "rcv_S",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -4561,7 +4561,7 @@
     {
      "lhs": "rcv_E",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -4586,7 +4586,7 @@
     {
      "lhs": "rcv_N",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -4611,7 +4611,7 @@
     {
      "lhs": "E_PM25_L0",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "c"
       ],
@@ -4676,7 +4676,7 @@
     {
      "lhs": "E_PM25_L1",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "c"
       ],
@@ -4741,7 +4741,7 @@
     {
      "lhs": "E_PM25_L2",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "c"
       ],
@@ -4806,7 +4806,7 @@
     {
      "lhs": "E_VOC_L0",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "c"
       ],
@@ -4871,7 +4871,7 @@
     {
      "lhs": "E_VOC_L1",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "c"
       ],
@@ -4936,7 +4936,7 @@
     {
      "lhs": "E_VOC_L2",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "c"
       ],
@@ -5001,7 +5001,7 @@
     {
      "lhs": "E_NOx_L0",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "c"
       ],
@@ -5066,7 +5066,7 @@
     {
      "lhs": "E_NOx_L1",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "c"
       ],
@@ -5131,7 +5131,7 @@
     {
      "lhs": "E_NOx_L2",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "c"
       ],
@@ -5196,7 +5196,7 @@
     {
      "lhs": "E_NH3_L0",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "c"
       ],
@@ -5261,7 +5261,7 @@
     {
      "lhs": "E_NH3_L1",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "c"
       ],
@@ -5326,7 +5326,7 @@
     {
      "lhs": "E_NH3_L2",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "c"
       ],
@@ -5391,7 +5391,7 @@
     {
      "lhs": "E_SOx_L0",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "c"
       ],
@@ -5456,7 +5456,7 @@
     {
      "lhs": "E_SOx_L1",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "c"
       ],
@@ -5521,7 +5521,7 @@
     {
      "lhs": "E_SOx_L2",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "c"
       ],
@@ -5586,7 +5586,7 @@
     {
      "lhs": "conc_PrimaryPM25_L0",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -5617,7 +5617,7 @@
     {
      "lhs": "conc_PrimaryPM25_L1",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -5648,7 +5648,7 @@
     {
      "lhs": "conc_PrimaryPM25_L2",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -5679,7 +5679,7 @@
     {
      "lhs": "conc_PrimaryPM25",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -5708,7 +5708,7 @@
     {
      "lhs": "pm_PrimaryPM25",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -5733,7 +5733,7 @@
     {
      "lhs": "conc_SOA_L0",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -5764,7 +5764,7 @@
     {
      "lhs": "conc_SOA_L1",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -5795,7 +5795,7 @@
     {
      "lhs": "conc_SOA_L2",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -5826,7 +5826,7 @@
     {
      "lhs": "conc_SOA",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -5855,7 +5855,7 @@
     {
      "lhs": "pm_SOA",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -5880,7 +5880,7 @@
     {
      "lhs": "conc_pNO3_L0",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -5911,7 +5911,7 @@
     {
      "lhs": "conc_pNO3_L1",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -5942,7 +5942,7 @@
     {
      "lhs": "conc_pNO3_L2",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -5973,7 +5973,7 @@
     {
      "lhs": "conc_pNO3",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -6002,7 +6002,7 @@
     {
      "lhs": "pm_pNO3",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -6027,7 +6027,7 @@
     {
      "lhs": "conc_pNH4_L0",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -6058,7 +6058,7 @@
     {
      "lhs": "conc_pNH4_L1",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -6089,7 +6089,7 @@
     {
      "lhs": "conc_pNH4_L2",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -6120,7 +6120,7 @@
     {
      "lhs": "conc_pNH4",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -6149,7 +6149,7 @@
     {
      "lhs": "pm_pNH4",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -6174,7 +6174,7 @@
     {
      "lhs": "conc_pSO4_L0",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -6205,7 +6205,7 @@
     {
      "lhs": "conc_pSO4_L1",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -6236,7 +6236,7 @@
     {
      "lhs": "conc_pSO4_L2",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -6267,7 +6267,7 @@
     {
      "lhs": "conc_pSO4",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -6296,7 +6296,7 @@
     {
      "lhs": "pm_pSO4",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
@@ -6321,7 +6321,7 @@
     {
      "lhs": "TotalPM25",
      "rhs": {
-      "op": "aggregate",
+      "op": "faq",
       "output_idx": [
        "rcv"
       ],
