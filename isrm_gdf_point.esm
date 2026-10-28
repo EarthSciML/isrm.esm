@@ -1,5 +1,5 @@
 {
- "esm": "1.1.0",
+ "esm": "1.2.0",
  "metadata": {
   "name": "ISRM_gdf_point",
   "description": "The InMAP ISRM over a caller-supplied POINT emission inventory (with ASME plume rise), read from an uploaded shapefile with one column per pollutant in SI units. Generated from isrm_point.esm by data/make_gdf_documents.py.",
@@ -2925,7 +2925,7 @@
             0.0
            ]
           },
-          1.0,
+          {"op": "const", "args": [], "value": 1.0, "units": "K"},
           {
            "op": "+",
            "args": [
@@ -3781,7 +3781,7 @@
               0.0
              ]
             },
-            1.0,
+            {"op": "const", "args": [], "value": 1.0, "units": "m"},
             {
              "op": "-",
              "args": [
@@ -4008,7 +4008,7 @@
               0.0
              ]
             },
-            1.0,
+            {"op": "const", "args": [], "value": 1.0, "units": "m"},
             {
              "op": "-",
              "args": [
