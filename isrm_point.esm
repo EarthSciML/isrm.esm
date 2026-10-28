@@ -1,5 +1,5 @@
 {
-  "esm": "1.1.0",
+  "esm": "1.2.0",
   "metadata": {
     "name": "ISRM_point",
     "description": "POINT-SOURCE emissions through the InMAP ISRM. The geometry-independent half \u2014 the grid axes, the sizing metaparameters and the shared expression fragments \u2014 is imported from ./isrm_base.esm (esm-spec 9.7); what remains here is everything specific to an inventory of stacks: the FF10 point loader, the projected record coordinates, the pollutant-to-pathway masks, the ASME plume rise over the stack's own meteorology, and the fifteen (pathway, SR layer) binning aggregates that carry a record's mass into its source cell. FULLY-AUTOMATIC clean full-domain InMAP ISRM, over the repaired and rechunked isrm_v1.2.2.zarr. Full-domain SR[src_cells, rcv_cells] per pathway AND per SR emission layer, E as the emission->(cell, layer) binning +-aggregate, X/Y as an in-model Lambert-conformal PROJECTION observed over raw emis_lon/emis_lat (the inline trig IS the lambert_conformal_forward_x/y expansion), projected at BUILD time by the general-eval coordinate path. PLUME RISE IS STATED HERE, NOT IN A RUNNER: fifteen observeds carry ctessum/atmos ASMEPrecomputed plus a CORRECTED sr.Reader.layerFracs over the zarr's own per-cell meteorology, and SPLIT each record's mass across the three SR emission layers before the contraction - w_sr0/w_sr1/w_sr2, summing to 1, interpolated on cell-CENTRE heights between the model layers [0, 3, 6] the SR calculation was performed for. NO hand-authored pushdown constructs (no derived set / producer / member_factor) and NO caller-supplied projected coordinates. Builds with pushdown_rewrite=true: the auto-rewrite generates the support set + distinct producer + member_factor + gated_select, and the three gated SR providers are fetched pre-sliced to the invented source cells.",
@@ -3371,7 +3371,7 @@
                         "r"
                       ]
                     },
-                    0.3048
+                    {"op": "const", "args": [], "value": 0.3048, "units": "m/ft"}
                   ]
                 },
                 0.0
@@ -3426,7 +3426,7 @@
                         "r"
                       ]
                     },
-                    0.3048
+                    {"op": "const", "args": [], "value": 0.3048, "units": "m/ft"}
                   ]
                 },
                 0.0
@@ -3487,13 +3487,13 @@
                                 "r"
                               ]
                             },
-                            32.0
+                            {"op": "const", "args": [], "value": 32.0, "units": "degF"}
                           ]
                         },
-                        0.5555555555555556
+                        {"op": "const", "args": [], "value": 0.5555555555555556, "units": "K/degF"}
                       ]
                     },
-                    273.15
+                    {"op": "const", "args": [], "value": 273.15, "units": "K"}
                   ]
                 },
                 0.0
@@ -3548,7 +3548,7 @@
                         "r"
                       ]
                     },
-                    0.3048
+                    {"op": "const", "args": [], "value": 0.3048, "units": "m/ft"}
                   ]
                 },
                 0.0
@@ -4218,7 +4218,7 @@
                         0.0
                       ]
                     },
-                    1.0,
+                    {"op": "const", "args": [], "value": 1.0, "units": "K"},
                     {
                       "op": "+",
                       "args": [
@@ -5074,7 +5074,7 @@
                             0.0
                           ]
                         },
-                        1.0,
+                        {"op": "const", "args": [], "value": 1.0, "units": "m"},
                         {
                           "op": "-",
                           "args": [
@@ -5301,7 +5301,7 @@
                             0.0
                           ]
                         },
-                        1.0,
+                        {"op": "const", "args": [], "value": 1.0, "units": "m"},
                         {
                           "op": "-",
                           "args": [
